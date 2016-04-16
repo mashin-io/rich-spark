@@ -16,7 +16,7 @@
 
 package io.mashin.rich.spark
 
-import org.apache.spark.rdd.{ScanLeftRDD, RDD}
+import org.apache.spark.rdd.{ScanRDD, RDD}
 
 import scala.reflect.ClassTag
 
@@ -26,7 +26,14 @@ class RichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]) extends S
     val pairF: ((K, V), (K, V)) => (K, V) = {
       case ((scanKey: K, scanValue: V), (key: K, value: V)) => (key, f(scanValue, value))
     }
-    ScanLeftRDD.scanLeft[(K, V)](rdd, (initK, zero), (initK, initV), pairF)
+    ScanRDD.scanLeft[(K, V)](rdd, (initK, zero), (initK, initV), pairF)
+  }
+
+  def scanRight(zero: V, initK: K, initV: V, f: (V, V) => V): RDD[(K, V)] = {
+    val pairF: ((K, V), (K, V)) => (K, V) = {
+      case ((key: K, value: V), (scanKey: K, scanValue: V)) => (key, f(value, scanValue))
+    }
+    ScanRDD.scanRight[(K, V)](rdd, (initK, zero), (initK, initV), pairF)
   }
 
 }

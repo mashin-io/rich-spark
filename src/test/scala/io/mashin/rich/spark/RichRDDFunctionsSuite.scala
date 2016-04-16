@@ -44,21 +44,21 @@ class RichRDDFunctionsSuite extends FunSuite with ShouldMatchers {
     sc.stop()
   }
 
-  test("Scan Left Pair RDD") {
-    val sc = sparkContext("Scan-Left-Pair-RDD")
+  test("Scan Right RDD") {
+    val sc = sparkContext("Scan-Right-RDD")
 
     val parts = 4
     val partSize = 1000
 
-    val scanLeftTest: (Array[Int], Int, (Int, Int) => Int) => Unit = {(input, init, f) =>
+    val scanRightTest: (Array[Int], Int, (Int, Int) => Int) => Unit = {(input, init, f) =>
       val rdd = sc.makeRDD(input, parts)
-      val rddScanned = rdd.scanLeft(0, init, f)
-      rddScanned.collect() should be (input.scanLeft(init)(f))
+      val rddScanned = rdd.scanRight(0, init, f)
+      rddScanned.collect() should be (input.scanRight(init)(f))
     }
 
     val f = (a: Int, b: Int) => a + b
     (-10 to 10).foreach {i =>
-      scanLeftTest((1 to parts * partSize).map(_ => i + Random.nextInt(10)).toArray, i, f)
+      scanRightTest((1 to parts * partSize).map(_ => i + Random.nextInt(10)).toArray, i, f)
     }
 
     sc.stop()

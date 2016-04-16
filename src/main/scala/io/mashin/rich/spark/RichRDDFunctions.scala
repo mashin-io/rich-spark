@@ -16,14 +16,18 @@
 
 package io.mashin.rich.spark
 
-import org.apache.spark.rdd.{ScanLeftRDD, RDD}
+import org.apache.spark.rdd.{ScanRDD, RDD}
 
 import scala.reflect.ClassTag
 
 class RichRDDFunctions[T: ClassTag](rdd: RDD[T]) extends Serializable {
 
   def scanLeft(zero: T, init: T, f: (T, T) => T): RDD[T] = {
-    ScanLeftRDD.scanLeft[T](rdd, zero, init, f)
+    ScanRDD.scanLeft[T](rdd, zero, init, f)
+  }
+
+  def scanRight(zero: T, init: T, f: (T, T) => T): RDD[T] = {
+    ScanRDD.scanRight[T](rdd, zero, init, f)
   }
 
 }

@@ -28,7 +28,7 @@ class RichPairRDDFunctionsSuite extends FunSuite with ShouldMatchers {
     val sc = sparkContext("Scan-Left-Pair-RDD")
 
     val parts = 4
-    val partSize = 2
+    val partSize = 1000
 
     val scanLeftTest: (Array[(Int, Int)], Int, (Int, Int) => Int) => Unit = {(input, init, f) =>
       val rdd = sc.makeRDD(input, parts)
@@ -39,6 +39,28 @@ class RichPairRDDFunctionsSuite extends FunSuite with ShouldMatchers {
     val f = (a: Int, b: Int) => a + b
     (-10 to 10).foreach {i =>
       scanLeftTest((1 to parts * partSize).zip(
+        (1 to parts * partSize).map(_ => i + Random.nextInt(10))).toArray, i, f)
+    }
+
+    sc.stop()
+  }
+
+  test("Scan Right Pair RDD") {
+    val sc = sparkContext("Scan-Right-Pair-RDD")
+
+    val parts = 4
+    val partSize = 1000
+
+    val scanRightTest: (Array[(Int, Int)], Int, (Int, Int) => Int) => Unit = {(input, init, f) =>
+      val rdd = sc.makeRDD(input, parts)
+      val rddScanned = rdd.scanRight(0, 0, init, f)
+      rddScanned.collect() should be (((1 to input.length).toArray ++ Array(0))
+        .zip(input.map(_._2).scanRight(init)(f)))
+    }
+
+    val f = (a: Int, b: Int) => a + b
+    (-10 to 10).foreach {i =>
+      scanRightTest((1 to parts * partSize).zip(
         (1 to parts * partSize).map(_ => i + Random.nextInt(10))).toArray, i, f)
     }
 
