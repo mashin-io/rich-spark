@@ -16,6 +16,7 @@
 
 package io.mashin.rich.spark
 
+import org.apache.spark.api.java.function.{Function, Function2}
 import org.apache.spark.rdd.RDD
 
 import scala.reflect.ClassTag
@@ -26,4 +27,12 @@ object RichRDD {
 
   implicit def pairRDDToRichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)])
     : RichPairRDDFunctions[K, V] = new RichPairRDDFunctions[K, V](rdd)
+
+  implicit def toScalaFunction[T, R](fun: Function[T, R]): T => R = {
+    (x: T) => fun.call(x)
+  }
+
+  implicit def toScalaFunction2[T1, T2, R](fun: Function2[T1, T2, R]): (T1, T2) => R = {
+    (x: T1, x1: T2) => fun.call(x, x1)
+  }
 }
