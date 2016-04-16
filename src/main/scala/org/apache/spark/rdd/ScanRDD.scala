@@ -82,7 +82,7 @@ object ScanRDD {
       (v1, v2) match {
         case (Some(t1), Some(t2)) => Some(f(t1, t2))
         case (Some(t1), None) => v1
-        case (None, Some(t2)) => v2
+        case _ => v2
       }
     }
 
@@ -124,7 +124,7 @@ object ScanRDD {
       (v1, v2) match {
         case (Some(t1), Some(t2)) => Some(f(t1, t2))
         case (Some(t1), None) => v1
-        case (None, Some(t2)) => v2
+        case _ => v2
       }
     }
 
