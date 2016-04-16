@@ -22,6 +22,20 @@ import scala.reflect.ClassTag
 
 class RichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]) extends Serializable {
 
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @return       RDD with intermediate results
+   *  @example      {{{
+   *    RDD((1, 1), (2, 2), (3, 3), (4, 4)).scanLeft(0, 0, 1, _ + _)
+   *     == RDD((0, 1), (1, 2), (2, 4), (3, 7), (4, 11))
+   *  }}}
+   */
   def scanLeft(zero: V, initK: K, initV: V, f: (V, V) => V): RDD[(K, V)] = {
     val pairF: ((K, V), (K, V)) => (K, V) = {
       case ((scanKey: K, scanValue: V), (key: K, value: V)) => (key, f(scanValue, value))
@@ -29,6 +43,20 @@ class RichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]) extends S
     ScanRDD.scanLeft[(K, V)](rdd, (initK, zero), (initK, initV), pairF)
   }
 
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @return       RDD with intermediate results
+   *  @example      {{{
+   *    RDD((1, 1), (2, 2), (3, 3), (4, 4)).scanRight(0, 5, 1, _ + _)
+   *     == RDD((1, 11), (2, 10), (3, 8), (4, 5), (5, 1))
+   *  }}}
+   */
   def scanRight(zero: V, initK: K, initV: V, f: (V, V) => V): RDD[(K, V)] = {
     val pairF: ((K, V), (K, V)) => (K, V) = {
       case ((key: K, value: V), (scanKey: K, scanValue: V)) => (key, f(value, scanValue))

@@ -22,10 +22,35 @@ import scala.reflect.ClassTag
 
 class RichRDDFunctions[T: ClassTag](rdd: RDD[T]) extends Serializable {
 
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
+   *  @return      RDD with intermediate results
+   *  @example     {{{
+   *    RDD(1, 2, 3, 4).scanLeft(0, 1, _ + _) == RDD(1, 2, 4, 7, 11)
+   *  }}}
+   */
   def scanLeft(zero: T, init: T, f: (T, T) => T): RDD[T] = {
     ScanRDD.scanLeft[T](rdd, zero, init, f)
   }
 
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *  The head of the collection is the last cumulative result.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
+   *  @return      RDD with intermediate results
+   *  @example     {{{
+   *    RDD(1, 2, 3, 4).scanRight(0, 1, _ + _) == RDD(11, 10, 8, 5, 1)
+   *  }}}
+   */
   def scanRight(zero: T, init: T, f: (T, T) => T): RDD[T] = {
     ScanRDD.scanRight[T](rdd, zero, init, f)
   }
