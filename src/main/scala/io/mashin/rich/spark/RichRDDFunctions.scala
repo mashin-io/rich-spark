@@ -29,6 +29,23 @@ class RichRDDFunctions[T: ClassTag](rdd: RDD[T]) extends Serializable {
    *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
    *  @param init  the initial value
    *  @param f     the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return      RDD with intermediate results
+   *  @example     {{{
+   *    RDD(1, 2, 3, 4).scanLeft(0, 1, _ + _, _ + _) == RDD(1, 2, 4, 7, 11)
+   *  }}}
+   */
+  def scanLeft[U: ClassTag](zero: U, init: U, f: (U, T) => U, c: (U, U) => U): RDD[U] = {
+    ScanRDD.scanLeft[T, U](rdd, zero, init, f, c)
+  }
+
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
    *  @return      RDD with intermediate results
    *  @example     {{{
    *    RDD(1, 2, 3, 4).scanLeft(0, 1, _ + _) == RDD(1, 2, 4, 7, 11)
@@ -41,7 +58,25 @@ class RichRDDFunctions[T: ClassTag](rdd: RDD[T]) extends Serializable {
   /**
    * Produces an RDD containing cumulative results of applying a
    *  function (binary operator) going right to left.
-   *  The head of the collection is the last cumulative result.
+   *  The head of the rdd is the last cumulative result.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return      RDD with intermediate results
+   *  @example     {{{
+   *    RDD(1, 2, 3, 4).scanRight(0, 1, _ + _, _ + _) == RDD(11, 10, 8, 5, 1)
+   *  }}}
+   */
+  def scanRight[U: ClassTag](zero: U, init: U, f: (T, U) => U, c: (U, U) => U): RDD[U] = {
+    ScanRDD.scanRight[T, U](rdd, zero, init, f, c)
+  }
+
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *  The head of the rdd is the last cumulative result.
    *
    *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
    *  @param init  the initial value

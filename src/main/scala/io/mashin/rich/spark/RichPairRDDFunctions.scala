@@ -30,6 +30,32 @@ class RichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]) extends S
    *  @param initK  the key of the initial value
    *  @param initV  the initial value
    *  @param f      the binary operator applied to the intermediate result and the element
+   *  @param c      a combiner operator applied to the intermediate results
+   *  @return       RDD with intermediate results
+   *  @example      {{{
+   *    RDD((1, 1), (2, 2), (3, 3), (4, 4)).scanLeft(0, 0, 1, _ + _, _ + _)
+   *     == RDD((0, 1), (1, 2), (2, 4), (3, 7), (4, 11))
+   *  }}}
+   */
+  def scanLeft[U: ClassTag](zero: U, initK: K, initV: U, f: (U, V) => U, c: (U, U) => U)
+    : RDD[(K, U)] = {
+    val pairF: ((K, U), (K, V)) => (K, U) = {
+      case ((scanKey: K, scanValue: U), (key: K, value: V)) => (key, f(scanValue, value))
+    }
+    val pairC: ((K, U), (K, U)) => (K, U) = {
+      case ((combineKey: K, combineValue: U), (key: K, value: V)) => (key, f(combineValue, value))
+    }
+    ScanRDD.scanLeft[(K, V), (K, U)](rdd, (initK, zero), (initK, initV), pairF, pairC)
+  }
+
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
    *  @return       RDD with intermediate results
    *  @example      {{{
    *    RDD((1, 1), (2, 2), (3, 3), (4, 4)).scanLeft(0, 0, 1, _ + _)
@@ -41,6 +67,32 @@ class RichPairRDDFunctions[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]) extends S
       case ((scanKey: K, scanValue: V), (key: K, value: V)) => (key, f(scanValue, value))
     }
     ScanRDD.scanLeft[(K, V)](rdd, (initK, zero), (initK, initV), pairF)
+  }
+
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @param c      a combiner operator applied to the intermediate results
+   *  @return       RDD with intermediate results
+   *  @example      {{{
+   *    RDD((1, 1), (2, 2), (3, 3), (4, 4)).scanRight(0, 5, 1, _ + _, _ + _)
+   *     == RDD((1, 11), (2, 10), (3, 8), (4, 5), (5, 1))
+   *  }}}
+   */
+  def scanRight[U: ClassTag](zero: U, initK: K, initV: U, f: (V, U) => U, c: (U, U) => U)
+    : RDD[(K, U)] = {
+    val pairF: ((K, V), (K, U)) => (K, U) = {
+      case ((key: K, value: V), (scanKey: K, scanValue: U)) => (key, f(value, scanValue))
+    }
+    val pairC: ((K, U), (K, U)) => (K, U) = {
+      case ((key: K, value: V), (combineKey: K, combineValue: U)) => (key, f(value, combineValue))
+    }
+    ScanRDD.scanRight[(K, V), (K, U)](rdd, (initK, zero), (initK, initV), pairF, pairC)
   }
 
   /**
