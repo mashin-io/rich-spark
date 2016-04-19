@@ -59,10 +59,45 @@ public class JavaRichRDD {
    *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
    *  @param init  the initial value
    *  @param f     the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return      RDD with intermediate results
+   */
+  public static <T, U> JavaRDD<U> scanLeft(JavaRDD<T> rdd, U zero, U init,
+       Function2<U, T, U> f, Function2<U, U, U> c) {
+    return JavaRichRDDHelper.scanLeft(rdd, zero, init, f, c,
+        RichRDD.<T>fakeClassTag(), RichRDD.<U>fakeClassTag());
+  }
+
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
    *  @return      RDD with intermediate results
    */
   public static <T> JavaRDD<T> scanLeft(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
     return JavaRichRDDHelper.scanLeft(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
+  }
+
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return       RDD with intermediate results
+   */
+  public static <K, V, U> JavaPairRDD<K, U> scanLeft(
+      JavaPairRDD<K, V> rdd, U zero, K initK, U initV,
+      Function2<U, V, U> f, Function2<U, U, U> c) {
+    return JavaRichRDDHelper.scanLeft(
+        rdd, zero, initK, initV, f, c,
+        RichRDD.<K>fakeClassTag(), RichRDD.<V>fakeClassTag(), RichRDD.<U>fakeClassTag());
   }
 
   /**
@@ -89,10 +124,46 @@ public class JavaRichRDD {
    *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
    *  @param init  the initial value
    *  @param f     the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return      RDD with intermediate results
+   */
+  public static <T, U> JavaRDD<U> scanRight(JavaRDD<T> rdd, U zero, U init,
+      Function2<T, U, U> f, Function2<U, U, U> c) {
+    return JavaRichRDDHelper.scanRight(rdd, zero, init, f, c,
+        RichRDD.<T>fakeClassTag(), RichRDD.<U>fakeClassTag());
+  }
+
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *  The head of the collection is the last cumulative result.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
    *  @return      RDD with intermediate results
    */
   public static <T> JavaRDD<T> scanRight(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
     return JavaRichRDDHelper.scanRight(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
+  }
+
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @param c     a combiner operator applied to the intermediate results
+   *  @return       RDD with intermediate results
+   */
+  public static <K, V, U> JavaPairRDD<K, U> scanRight(
+      JavaPairRDD<K, V> rdd, U zero, K initK, U initV,
+      Function2<V, U, U> f, Function2<U, U, U> c) {
+    return JavaRichRDDHelper.scanRight(
+        rdd, zero, initK, initV, f, c,
+        RichRDD.<K>fakeClassTag(), RichRDD.<V>fakeClassTag(), RichRDD.<U>fakeClassTag());
   }
 
   /**

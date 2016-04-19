@@ -41,6 +41,16 @@ object JavaRichRDDHelper {
     sc.sc.httpRDD[T](f1, f2, numPartitions)
   }
 
+  def scanLeft[T: ClassTag, U: ClassTag](
+      rdd: JavaRDD[T],
+      zero: U,
+      init: U,
+      f: Function2[U, T, U],
+      c: Function2[U, U, U])
+    : JavaRDD[U] = {
+    rdd.rdd.scanLeft(zero, init, f, c)
+  }
+
   def scanLeft[T: ClassTag](
       rdd: JavaRDD[T],
       zero: T,
@@ -48,6 +58,17 @@ object JavaRichRDDHelper {
       f: Function2[T, T, T])
     : JavaRDD[T] = {
     rdd.rdd.scanLeft(zero, init, f)
+  }
+
+  def scanLeft[K: ClassTag, V: ClassTag, U: ClassTag](
+      rdd: JavaPairRDD[K, V],
+      zero: U,
+      initK: K,
+      initV: U,
+      f: Function2[U, V, U],
+      c: Function2[U, U, U])
+    : JavaPairRDD[K, U] = {
+    JavaPairRDD.fromRDD(rdd.rdd.scanLeft(zero, initK, initV, f, c))
   }
 
   def scanLeft[K: ClassTag, V: ClassTag](
@@ -60,6 +81,16 @@ object JavaRichRDDHelper {
     JavaPairRDD.fromRDD(rdd.rdd.scanLeft(zero, initK, initV, f))
   }
 
+  def scanRight[T: ClassTag, U: ClassTag](
+      rdd: JavaRDD[T],
+      zero: U,
+      init: U,
+      f: Function2[T, U, U],
+      c: Function2[U, U, U])
+    : JavaRDD[U] = {
+    rdd.rdd.scanRight(zero, init, f, c)
+  }
+
   def scanRight[T: ClassTag](
       rdd: JavaRDD[T],
       zero: T,
@@ -67,6 +98,17 @@ object JavaRichRDDHelper {
       f: Function2[T, T, T])
     : JavaRDD[T] = {
     rdd.rdd.scanRight(zero, init, f)
+  }
+
+  def scanRight[K: ClassTag, V: ClassTag, U: ClassTag](
+      rdd: JavaPairRDD[K, V],
+      zero: U,
+      initK: K,
+      initV: U,
+      f: Function2[V, U, U],
+      c: Function2[U, U, U])
+    : JavaPairRDD[K, U] = {
+    JavaPairRDD.fromRDD(rdd.rdd.scanRight(zero, initK, initV, f, c))
   }
 
   def scanRight[K: ClassTag, V: ClassTag](
