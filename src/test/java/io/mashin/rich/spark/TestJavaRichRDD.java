@@ -1,7 +1,22 @@
+/*
+ * Copyright (c) 2016 Mashin (http://mashin.io). All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mashin.rich.spark;
 
-import static org.junit.Assert.assertArrayEquals;
-
+import org.apache.http.client.methods.HttpGet;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -9,7 +24,17 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.junit.Test;
 import scala.Tuple2;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.StreamSupport;
+
+import static org.junit.Assert.*;
 
 public class TestJavaRichRDD {
 
@@ -67,6 +92,49 @@ public class TestJavaRichRDD {
     }, rdd.collect().toArray(new Object[0]));
 
     sc.stop();
+  }
+
+  @Test
+  public void testHttpRDD() {
+    String serverIP = HttpMockConfig.serverIP();
+    int serverPort = HttpMockConfig.serverPort();
+
+    JavaSparkContext sc = sc("testHttpRDD");
+    HttpMock mock = new HttpMock();
+    mock.start();
+
+    int numPages = 4;
+
+    JavaRDD<String> rdd = JavaRichRDD.httpRDD(
+        sc,
+        i -> new HttpGet("http://" + serverIP + ":" + serverPort + "/rdd?page=" + (i + 1)),
+        (i, httpResponse) -> {
+          BufferedReader is = new BufferedReader(new InputStreamReader(
+              httpResponse.getEntity().getContent()));
+          String s = is.readLine();
+          is.close();
+          return Arrays.asList(s.split(",")).iterator();
+        },
+        numPages).cache();
+
+
+    assertEquals(numPages, rdd.getNumPartitions());
+    assertEquals(numPages * HttpMockConfig.perPage(), rdd.count());
+
+    boolean isValid = rdd.mapPartitionsWithIndex((i, iter) -> {
+        List<String> list = StreamSupport.stream(Spliterators.spliteratorUnknownSize(
+            iter, Spliterator.ORDERED), false)
+          .collect(Collectors.toList());
+        return IntStream.range(0, list.size())
+          .mapToObj(j -> HttpMockConfig.isValidElement(list.get(j), i, j))
+          .iterator();
+      }, true)
+      .reduce(Boolean::logicalAnd);
+
+    assertTrue(isValid);
+
+    sc.stop();
+    mock.stop();
   }
 
   private <K, V> Tuple2<K, V> t(K k, V v) {

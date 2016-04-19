@@ -23,6 +23,8 @@ import org.apache.spark.rdd.RDD
 import scala.reflect.ClassTag
 
 object RichRDD {
+  def fakeClassTag[T]: ClassTag[T] = ClassTag.AnyRef.asInstanceOf[ClassTag[T]]
+
   implicit def rddToRichRDDFunctions[T: ClassTag](rdd: RDD[T]): RichRDDFunctions[T] =
     new RichRDDFunctions[T](rdd)
 
@@ -38,5 +40,17 @@ object RichRDD {
 
   implicit def toScalaFunction2[T1, T2, R](fun: Function2[T1, T2, R]): (T1, T2) => R = {
     (x: T1, x1: T2) => fun.call(x, x1)
+  }
+
+  implicit def toSparkFunction[T, R](fun: T => R): Function[T, R] = {
+    new Function[T, R] {
+      override def call(v1: T): R = fun(v1)
+    }
+  }
+
+  implicit def toSparkFunction2[T1, T2, R](fun: (T1, T2) => R): Function2[T1, T2, R] = {
+    new Function2[T1, T2, R] {
+      override def call(v1: T1, v2: T2): R = fun(v1, v2)
+    }
   }
 }

@@ -16,16 +16,17 @@
 
 package io.mashin.rich.spark
 
-import org.apache.http.{HttpResponse, HttpRequest}
+import org.apache.http.{HttpRequest, HttpResponse}
 import org.apache.spark.SparkContext
+import org.apache.spark.api.java.function.{Function, Function2}
 import org.apache.spark.rdd.{HttpRDD, RDD}
 
 import scala.reflect.ClassTag
 
 class RichSparkContextFunctions(sc: SparkContext) {
   def httpRDD[T: ClassTag](
-      httpRequestFactory: Int => HttpRequest,
-      httpResponseHandlerFactory: (Int, HttpResponse) => Iterator[T],
+      httpRequestFactory: Function[Int, HttpRequest],
+      httpResponseHandlerFactory: Function2[Int, HttpResponse, Iterator[T]],
       numPartitions: Int)
     : RDD[T] = {
     HttpRDD.create(sc, httpRequestFactory, httpResponseHandlerFactory, numPartitions)

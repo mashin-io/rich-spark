@@ -16,50 +16,50 @@
 
 package io.mashin.rich.spark;
 
+import io.mashin.rich.spark.api.java.JavaRichRDDHelper;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpResponse;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
-import org.apache.spark.rdd.RDD;
-import scala.Tuple2;
+
+import java.util.Iterator;
 
 public class JavaRichRDD {
 
+  public static <T> JavaRDD<T> httpRDD(
+      JavaSparkContext sc,
+      Function<Integer, HttpRequest> httpRequestFactory,
+      Function2<Integer, HttpResponse, Iterator<T>> httpResponseHandlerFactory,
+      int numPartitions) {
+    return JavaRichRDDHelper.httpRDD(
+        sc,
+        httpRequestFactory,
+        httpResponseHandlerFactory,
+        numPartitions,
+        RichRDD.<T>fakeClassTag());
+  }
+
   public static <T> JavaRDD<T> scanLeft(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
-    return rdd(rich(rdd).scanLeft(zero, init, toF2(f)));
+    return JavaRichRDDHelper.scanLeft(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
   }
 
   public static <K, V> JavaPairRDD<K, V> scanLeft(
       JavaPairRDD<K, V> rdd, V zero, K initK, V initV, Function2<V, V, V> f) {
-    return pairRDD(rich(rdd).scanLeft(zero, initK, initV, toF2(f)));
+    return JavaRichRDDHelper.scanLeft(
+        rdd, zero, initK, initV, f, RichRDD.<K>fakeClassTag(), RichRDD.<V>fakeClassTag());
   }
 
   public static <T> JavaRDD<T> scanRight(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
-    return rdd(rich(rdd).scanRight(zero, init, toF2(f)));
+    return JavaRichRDDHelper.scanRight(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
   }
 
   public static <K, V> JavaPairRDD<K, V> scanRight(
       JavaPairRDD<K, V> rdd, V zero, K initK, V initV, Function2<V, V, V> f) {
-    return pairRDD(rich(rdd).scanRight(zero, initK, initV, toF2(f)));
-  }
-
-  private static <T> JavaRDD<T> rdd(RDD<T> rdd) {
-    return new JavaRDD<T>(rdd, rdd.elementClassTag());
-  }
-
-  private static <K, V> JavaPairRDD<K, V> pairRDD(RDD<Tuple2<K, V>> rdd) {
-    return JavaPairRDD.fromJavaRDD(rdd(rdd));
-  }
-
-  private static <T> RichRDDFunctions<T> rich(JavaRDD<T> rdd) {
-    return RichRDD.rddToRichRDDFunctions(rdd.rdd(), rdd.rdd().elementClassTag());
-  }
-
-  private static <K, V> RichPairRDDFunctions<K, V> rich(JavaPairRDD<K, V> rdd) {
-    return RichRDD.pairRDDToRichPairRDDFunctions(rdd.rdd(), rdd.kClassTag(), rdd.vClassTag());
-  }
-
-  private static <T, U, R> scala.Function2<T, U, R> toF2(final Function2<T, U, R> f) {
-    return RichRDD.toScalaFunction2(f);
+    return JavaRichRDDHelper.scanRight(
+        rdd, zero, initK, initV, f, RichRDD.<K>fakeClassTag(), RichRDD.<V>fakeClassTag());
   }
 
 }

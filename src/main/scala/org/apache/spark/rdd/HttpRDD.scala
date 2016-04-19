@@ -21,6 +21,7 @@ import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.http.{HttpRequest, HttpResponse}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark._
+import org.apache.spark.api.java.function.{Function2, Function}
 
 import scala.reflect.ClassTag
 
@@ -29,21 +30,21 @@ private[spark] class HttpPartition(val idx: Int) extends Partition {
 }
 
 class HttpRDD[T: ClassTag](
-    @transient sc: SparkContext,
-    httpRequestFactory: Int => HttpRequest,
-    httpResponseHandlerFactory: (Int, HttpResponse) => Iterator[T],
-    numPartitions: Int)
+    @transient val sc: SparkContext,
+    val httpRequestFactory: Function[Int, HttpRequest],
+    val httpResponseHandlerFactory: Function2[Int, HttpResponse, Iterator[T]],
+    val numPartitions: Int)
   extends RDD[T](sc, Nil) with Logging {
 
   @DeveloperApi
   override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     val httpClient = HttpClientBuilder.create().build()
-    val httpRequest = httpRequestFactory(split.index)
+    val httpRequest = httpRequestFactory.call(split.index)
     val httpResponse = httpRequest match {
       case request: HttpUriRequest => httpClient.execute(request)
       case _ => throw new SparkException(s"not supported http request $httpRequest")
     }
-    val iter = httpResponseHandlerFactory(split.index, httpResponse)
+    val iter = httpResponseHandlerFactory.call(split.index, httpResponse)
     httpResponse.close()
     httpClient.close()
     iter
@@ -57,8 +58,8 @@ class HttpRDD[T: ClassTag](
 object HttpRDD {
   def create[T: ClassTag](
       sc: SparkContext,
-      httpRequestFactory: Int => HttpRequest,
-      httpResponseHandlerFactory: (Int, HttpResponse) => Iterator[T],
+      httpRequestFactory: Function[Int, HttpRequest],
+      httpResponseHandlerFactory: Function2[Int, HttpResponse, Iterator[T]],
       numPartitions: Int)
     : HttpRDD[T] = {
     new HttpRDD[T](sc, httpRequestFactory, httpResponseHandlerFactory, numPartitions)
