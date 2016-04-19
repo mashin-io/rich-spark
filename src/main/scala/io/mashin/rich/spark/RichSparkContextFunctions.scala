@@ -24,6 +24,16 @@ import org.apache.spark.rdd.{HttpRDD, RDD}
 import scala.reflect.ClassTag
 
 class RichSparkContextFunctions(sc: SparkContext) {
+  /**
+   * Creates an RDD based on the responses of HTTP requests equals to the
+   * given number of partitions.
+   *
+   * @param httpRequestFactory constructs an HTTP request given a partition index
+   * @param httpResponseHandlerFactory constructs an iterator for the elements of
+   *                                   the partition given the partition index and
+   *                                   the corresponding HTTP response
+   * @param numPartitions the number of partitions
+   */
   def httpRDD[T: ClassTag](
       httpRequestFactory: Function[Int, HttpRequest],
       httpResponseHandlerFactory: Function2[Int, HttpResponse, Iterator[T]],

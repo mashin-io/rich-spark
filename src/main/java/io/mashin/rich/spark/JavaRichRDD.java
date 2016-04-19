@@ -29,6 +29,16 @@ import java.util.Iterator;
 
 public class JavaRichRDD {
 
+  /**
+   * Creates an RDD based on the responses of HTTP requests equals to the
+   * given number of partitions.
+   *
+   * @param httpRequestFactory constructs an HTTP request given a partition index
+   * @param httpResponseHandlerFactory constructs an iterator for the elements of
+   *                                   the partition given the partition index and
+   *                                   the corresponding HTTP response
+   * @param numPartitions the number of partitions
+   */
   public static <T> JavaRDD<T> httpRDD(
       JavaSparkContext sc,
       Function<Integer, HttpRequest> httpRequestFactory,
@@ -42,20 +52,59 @@ public class JavaRichRDD {
         RichRDD.<T>fakeClassTag());
   }
 
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
+   *  @return      RDD with intermediate results
+   */
   public static <T> JavaRDD<T> scanLeft(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
     return JavaRichRDDHelper.scanLeft(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
   }
 
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going left to right.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @return       RDD with intermediate results
+   */
   public static <K, V> JavaPairRDD<K, V> scanLeft(
       JavaPairRDD<K, V> rdd, V zero, K initK, V initV, Function2<V, V, V> f) {
     return JavaRichRDDHelper.scanLeft(
         rdd, zero, initK, initV, f, RichRDD.<K>fakeClassTag(), RichRDD.<V>fakeClassTag());
   }
 
+  /**
+   * Produces an RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *  The head of the collection is the last cumulative result.
+   *
+   *  @param zero  the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param init  the initial value
+   *  @param f     the binary operator applied to the intermediate result and the element
+   *  @return      RDD with intermediate results
+   */
   public static <T> JavaRDD<T> scanRight(JavaRDD<T> rdd, T zero, T init, Function2<T, T, T> f) {
     return JavaRichRDDHelper.scanRight(rdd, zero, init, f, RichRDD.<T>fakeClassTag());
   }
 
+  /**
+   * Produces a pair RDD containing cumulative results of applying a
+   *  function (binary operator) going right to left.
+   *
+   *  @param zero   the zero/neutral value s.t. f(zero, other) = other and f(other, zero) = other
+   *  @param initK  the key of the initial value
+   *  @param initV  the initial value
+   *  @param f      the binary operator applied to the intermediate result and the element
+   *  @return       RDD with intermediate results
+   */
   public static <K, V> JavaPairRDD<K, V> scanRight(
       JavaPairRDD<K, V> rdd, V zero, K initK, V initV, Function2<V, V, V> f) {
     return JavaRichRDDHelper.scanRight(
