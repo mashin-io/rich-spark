@@ -16,45 +16,89 @@
 
 package org.apache.spark.rdd
 
-import org.apache.spark.{TaskContext, Partition}
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.{OneToOneDependency, Partition, TaskContext}
 
 import scala.reflect.ClassTag
 
-class ScanRDD[T: ClassTag](
-    val prev: RDD[T],
-    val cleanF: (T, T) => T,
-    val initials: Array[T],
-    val initialPartitionIndex: Int,
+private[spark] class ScanPartition(val i: Partition, val prefixes: Seq[Partition])
+  extends Partition {
+  override def index: Int = i.index
+}
+
+class ScanRDD[T: ClassTag, U: ClassTag](
+    val partiallyScannedRdd: RDD[U],
+    val prefixesRdd: RDD[Option[U]],
+    val cleanC: (U, U) => U,
     val isScanLeft: Boolean = true)
-  extends RDD[T](prev) {
+  extends RDD[U](partiallyScannedRdd.sparkContext,
+    List(new OneToOneDependency[U](partiallyScannedRdd),
+      new OneToOneDependency[Option[U]](prefixesRdd))) {
 
   @DeveloperApi
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
-    val iter = if (isScanLeft) {
-      prev.iterator(split, context)
-        .map(cleanF(initials(split.index), _))
-    } else {
-      prev.iterator(split, context)
-        .map(cleanF(_, initials(split.index)))
-    }
-    if (split.index == initialPartitionIndex) {
-      iter
-    } else {
-      if (isScanLeft) {
-        iter.drop(1)
-      } else {
-        iter.toIndexedSeq.init.iterator
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    val scanSplit = split.asInstanceOf[ScanPartition]
+
+    val cWithOptions: (Option[U], Option[U]) => Option[U] = (v1, v2) => {
+      (v1, v2) match {
+        case (Some(t1), Some(t2)) => Some(cleanC(t1, t2))
+        case (Some(t1), None) => v1
+        case _ => v2
       }
+    }
+
+    val prefixes = scanSplit.prefixes.map(prefixesRdd.iterator(_, context).toSeq.head)
+
+    val prefix = (isScanLeft, prefixes) match {
+        case (_, Nil) => None
+        case (_, head :: Nil) => head
+        case (true, _) => prefixes.reduceLeft(cWithOptions)
+        case (false, _) => prefixes.reduceRight(cWithOptions)
+      }
+
+    (isScanLeft, prefix) match {
+      case (true, Some(p)) => partiallyScannedRdd.iterator(scanSplit.i, context).map(cleanC(p, _))
+      case (false, Some(p)) => partiallyScannedRdd.iterator(scanSplit.i, context).map(cleanC(_, p))
+      case (_, None) => partiallyScannedRdd.iterator(scanSplit.i, context)
     }
   }
 
   override protected def getPartitions: Array[Partition] = {
-    prev.partitions
+    if (isScanLeft) {
+      partiallyScannedRdd.partitions.map(p =>
+        new ScanPartition(p, prefixesRdd.partitions.slice(0, p.index)))
+    } else {
+      partiallyScannedRdd.partitions.map(p =>
+        new ScanPartition(p, prefixesRdd.partitions.drop(p.index + 1)))
+    }
   }
+
 }
 
 object ScanRDD {
+
+  def scanLeft[T: ClassTag, U: ClassTag](
+      rdd: RDD[T],
+      zero: U,
+      init: U,
+      f: (U, T) => U,
+      c: (U, U) => U)
+    : RDD[U] = {
+
+    val partiallyScannedRdd = rdd.mapPartitionsWithIndex((i, iter) => {
+        if (i == 0) {
+          iter.scanLeft(init)(f)
+        } else {
+          iter.scanLeft(zero)(f).drop(1)
+        }
+      }, preservesPartitioning = true)
+
+    val prefixRdd = partiallyScannedRdd.mapPartitions(iter => Iterator.single(iter.toSeq.lastOption))
+
+    val sc = rdd.sparkContext
+
+    new ScanRDD[T, U](partiallyScannedRdd, prefixRdd, sc.clean(c), isScanLeft = true)
+  }
 
   def scanLeft[T: ClassTag](
       rdd: RDD[T],
@@ -62,38 +106,32 @@ object ScanRDD {
       init: T,
       f: (T, T) => T)
     : RDD[T] = {
+    scanLeft[T, T](rdd, zero, init, f, f)
+  }
 
-    val scanPartition: Iterator[T] => Iterator[T] = iter => iter.scanLeft(zero)(f)
+  def scanRight[T: ClassTag, U: ClassTag](
+      rdd: RDD[T],
+      zero: U,
+      init: U,
+      f: (T, U) => U,
+      c: (U, U) => U)
+    : RDD[U] = {
 
-    val partiallyScannedRdd = rdd.mapPartitions(scanPartition, preservesPartitioning = true)
+    val lastPartition = rdd.partitions.length - 1
 
-    val lastScanOfPartition: Iterator[T] => Option[T] = iter => iter.toIndexedSeq.lastOption
+    val partiallyScannedRdd = rdd.mapPartitionsWithIndex((i, iter) => {
+      if (i == lastPartition) {
+        iter.scanRight(init)(f)
+      } else {
+        iter.scanRight(zero)(f).toSeq.dropRight(1).iterator
+      }
+    }, preservesPartitioning = true)
 
-    var initialsOptions: Array[(Option[T], Int)] = Array((Some(init), 0))
-    val appendResults = (index: Int, taskResult: Option[T]) => {
-      initialsOptions ++= Array((taskResult, index + 1))
-    }
+    val prefixRdd = partiallyScannedRdd.mapPartitions(iter => Iterator.single(iter.toSeq.headOption))
 
     val sc = rdd.sparkContext
 
-    sc.runJob(partiallyScannedRdd, lastScanOfPartition, appendResults)
-
-    val fWithOptions: (Option[T], Option[T]) => Option[T] = (v1, v2) => {
-      (v1, v2) match {
-        case (Some(t1), Some(t2)) => Some(f(t1, t2))
-        case (Some(t1), None) => v1
-        case _ => v2
-      }
-    }
-
-    val initials = initialsOptions.sortWith((a, b) => a._2 < b._2)
-      .map(t => t._1)
-      .scanLeft(None.asInstanceOf[Option[T]])(fWithOptions)
-      .tail
-      .map(_.getOrElse(zero))
-
-    new ScanRDD[T](partiallyScannedRdd, sc.clean(f),
-      initials.init, initialPartitionIndex = 0, isScanLeft = true)
+    new ScanRDD[T, U](partiallyScannedRdd, prefixRdd, sc.clean(c), isScanLeft = false)
   }
 
   def scanRight[T: ClassTag](
@@ -102,40 +140,7 @@ object ScanRDD {
       init: T,
       f: (T, T) => T)
     : RDD[T] = {
-
-    val scanPartition: Iterator[T] => Iterator[T] = iter => iter.scanRight(zero)(f)
-
-    val partiallyScannedRdd = rdd.mapPartitions(scanPartition, preservesPartitioning = true)
-
-    val lastScanOfPartition: Iterator[T] => Option[T] = iter => iter.toIndexedSeq.headOption
-
-    var initialsOptions: Array[(Option[T], Int)] = Array.empty
-    val appendResults = (index: Int, taskResult: Option[T]) => {
-      initialsOptions ++= Array((taskResult, index - 1))
-    }
-
-    val sc = rdd.sparkContext
-
-    sc.runJob(partiallyScannedRdd, lastScanOfPartition, appendResults)
-
-    initialsOptions ++= Array((Some(init), initialsOptions.length - 1))
-
-    val fWithOptions: (Option[T], Option[T]) => Option[T] = (v1, v2) => {
-      (v1, v2) match {
-        case (Some(t1), Some(t2)) => Some(f(t1, t2))
-        case (Some(t1), None) => v1
-        case _ => v2
-      }
-    }
-
-    val initials = initialsOptions.sortWith((a, b) => a._2 < b._2)
-      .map(t => t._1)
-      .scanRight(None.asInstanceOf[Option[T]])(fWithOptions)
-      .init
-      .map(_.getOrElse(zero))
-
-    new ScanRDD[T](partiallyScannedRdd, sc.clean(f),
-      initials.tail, initialPartitionIndex = initials.length - 2, isScanLeft = false)
+    scanRight[T, T](rdd, zero, init, f, f)
   }
 
 }
