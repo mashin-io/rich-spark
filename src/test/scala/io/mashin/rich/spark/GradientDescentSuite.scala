@@ -28,6 +28,7 @@ class GradientDescentSuite extends FunSuite with ShouldMatchers {
     println("losses: " + losses.toList.mkString(", "))
     println("wOriginal: " + wOriginal)
     println("wHat: " + wHat)
+    println(s"RMSE: ${rmse(data, wHat)}")
 
     sc.stop()
   }
@@ -49,6 +50,7 @@ class GradientDescentSuite extends FunSuite with ShouldMatchers {
     println("losses: " + losses.toList.mkString(", "))
     println("wOriginal: " + wOriginal)
     println("wHat: " + wHat)
+    println(s"RMSE: ${rmse(data, wHat)}")
 
     sc.stop()
   }

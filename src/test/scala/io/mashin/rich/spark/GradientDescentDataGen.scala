@@ -19,8 +19,8 @@ object GradientDescentDataGen {
   val miniBatchFraction: Double = 1
   val convergenceTol: Double = 0.001
 
-  def f(x: Vector): Double = {
-    (0 until d).map(i => x(i) * wOriginal(i)).sum
+  def f(x: Vector, w: Vector = wOriginal): Double = {
+    (0 until d).map(i => x(i) * w(i)).sum
   }
 
   def generate(implicit sc: SparkContext): RDD[(Double, Vector)] = {
@@ -30,6 +30,15 @@ object GradientDescentDataGen {
         Vectors.dense(Array.tabulate[Double](d)(_ => Random.nextDouble))
       })
       .map(v => (f(v), v))
+  }
+
+  def rmse(data: RDD[(Double, Vector)], weights: Vector): Double = {
+    val bcWeights = data.context.broadcast(weights)
+    val se = data.treeAggregate(0.0)(
+      seqOp = (s, point) => Math.pow(f(point._2, bcWeights.value) - point._1, 2),
+      combOp = _ + _
+    )
+    Math.sqrt(se / data.count())
   }
 
 }
