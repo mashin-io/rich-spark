@@ -23,7 +23,8 @@ import org.apache.spark.mllib.evaluation.RegressionMetrics
 class LinearRegressionWithParallelSGDSuite extends RichSparkTestSuite {
 
   sparkTest("LinearRegressionWithParallelSGD VS LinearRegressionWithSGD") {sc =>
-    val data = generate(sc)
+    val data = generate(sc).cache()
+    data.count()
 
     var model1: LinearRegressionModel = null
     val t1 = time {
@@ -44,8 +45,9 @@ class LinearRegressionWithParallelSGDSuite extends RichSparkTestSuite {
     metrics1.meanAbsoluteError < metrics2.meanAbsoluteError should be (true)
     metrics1.rootMeanSquaredError < metrics2.rootMeanSquaredError should be (true)
 
-    println(s"LinearRegressionWithParallelSGD is ${t2.toDouble/t1.toDouble}X" +
-      s" faster than LinearRegressionWithSGD")
+    println(s"LinearRegressionWithParallelSGD (${formatDuration(t1)}) " +
+      s"is ${t2.toDouble/t1.toDouble}X" +
+      s" faster than LinearRegressionWithSGD (${formatDuration(t2)})")
     println(s"meanAbsoluteError: LinearRegressionWithParallelSGD " +
       s"is ${metrics2.meanAbsoluteError/metrics1.meanAbsoluteError}X" +
       s" more accurate than LinearRegressionWithSGD")
