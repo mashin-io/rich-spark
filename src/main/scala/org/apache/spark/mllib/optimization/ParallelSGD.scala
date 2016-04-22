@@ -11,10 +11,12 @@ import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 import scala.util.Random
 
-private[spark] class RandomPartitioner(val n: Int, val r: Random) extends Partitioner {
+private[spark] class RandomPartitioner(val n: Int) extends Partitioner {
+  val random = new Random(System.nanoTime)
+
   override def numPartitions: Int = n
 
-  override def getPartition(key: Any): Int = r.nextInt(n)
+  override def getPartition(key: Any): Int = random.nextInt(n)
 }
 
 class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
@@ -38,8 +40,7 @@ class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
 
   /**
    * :: Experimental ::
-   * Set fraction of data to be used for each SGD iteration.
-   * Default 1.0 (corresponding to deterministic/classical gradient descent)
+   * Set fraction of data to be used for each SGD iteration. Default 1.0
    */
   @Experimental
   def setMiniBatchFraction(fraction: Double): this.type = {
@@ -48,7 +49,9 @@ class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
   }
 
   /**
-   * Set the number of level 1 iterations for Parallel SGD. Default 10.
+   * Set the number of level 1 iterations for Parallel SGD.
+   * The number of data shuffle iterations.
+   * Default 10.
    */
   def setNumIterations(iters: Int): this.type = {
     this.numIterations = iters
@@ -56,8 +59,11 @@ class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
   }
 
   /**
-    * Set the number of level 2 iterations for Parallel SGD. Default 100.
-    */
+   * Set the number of level 2 iterations for Parallel SGD.
+   * The number of mini-batch SGD iterations per partition
+   * of the shuffled data.
+   * Default 100.
+   */
   def setNumIterations2(iters: Int): this.type = {
     this.numIterations2 = iters
     this
@@ -73,7 +79,8 @@ class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
 
   /**
    * Set the convergence tolerance. Default 0.001
-   * convergenceTol is a condition which decides iteration termination.
+   * convergenceTol is a condition which decides iteration termination
+   * (both first and second level iterations).
    * The end of iteration is decided based on below logic.
    *
    *  - If the norm of the new solution vector is >1, the diff of solution vectors
@@ -143,30 +150,39 @@ class ParallelSGD (private var gradient: Gradient, private var updater: Updater)
 @DeveloperApi
 object ParallelSGD extends Logging {
   /**
-    * Run parallel stochastic gradient descent (ParallelSGD) using mini batches.
-    * In each iteration, we sample a subset (fraction miniBatchFraction) of the total data
-    * in order to compute a gradient estimate.
-    * Sampling, and averaging the subgradients over this subset is performed using one standard
-    * spark map-reduce in each iteration.
-    *
-    * @param data Input data for SGD. RDD of the set of data examples, each of
-    *             the form (label, [feature values]).
-    * @param gradient Gradient object (used to compute the gradient of the loss function of
-    *                 one single data example)
-    * @param updater Updater function to actually perform a gradient step in a given direction.
-    * @param stepSize initial step size for the first step
-    * @param numIterations number of iterations that SGD should be run.
-    * @param regParam regularization parameter
-    * @param miniBatchFraction fraction of the input data set that should be used for
-    *                          one iteration of SGD. Default value 1.0.
-    * @param convergenceTol Minibatch iteration will end before numIterations if the relative
-    *                       difference between the current weight and the previous weight is less
-    *                       than this value. In measuring convergence, L2 norm is calculated.
-    *                       Default value 0.001. Must be between 0.0 and 1.0 inclusively.
-    * @return A tuple containing two elements. The first element is a column matrix containing
-    *         weights for every feature, and the second element is an array containing the
-    *         stochastic loss computed for every iteration.
-    */
+   * Run parallel stochastic gradient descent (ParallelSGD) using mini batches per partition.
+   * In each level 1 iteration, we shuffle the data, then we run mini-batch SGD on each
+   * shuffled partition for a number of iterations (= numIterations2) computing weights per
+   * partition, then we aggregate the weights from each partition computing the average that
+   * would be used as initial weights for the next level 1 iteration.
+   *
+   * In each level 2 iteration, we sample a subset (fraction miniBatchFraction) of the data per
+   * partition in order to compute a gradient estimate. That gradient estimate is the average
+   * of subgradients computed for each data point from the sampled batch. The weights are updated
+   * locally per partition using the gradient estimate.
+   * Sampling, and averaging the subgradients over this subset is performed locally per partition
+   * without any spark map-reduce actions.
+   *
+   * @param data Input data for SGD. RDD of the set of data examples, each of
+   *             the form (label, [feature values]).
+   * @param gradient Gradient object (used to compute the gradient of the loss function of
+   *                 one single data example)
+   * @param updater Updater function to actually perform a gradient step in a given direction.
+   * @param stepSize initial step size for the first step
+   * @param numIterations number of level 1 iterations (the shuffling iterations)
+   * @param numIterations2 number of level 2 iterations (the mini-batch SGD iterations)
+   * @param regParam regularization parameter
+   * @param miniBatchFraction fraction of the data set per partition that should be used for
+   *                          one iteration of SGD. Default value 1.0.
+   * @param convergenceTol both levels iterations will end before the given number of iterations
+   *                       if the relative difference between the current weight and the previous
+   *                       weight is less than this value. In measuring convergence, L2 norm is calculated.
+   *                       Default value 0.001. Must be between 0.0 and 1.0 inclusively.
+   * @return A tuple containing two elements. The first element is a column matrix containing
+   *         weights for every feature, and the second element is an array containing the
+   *         average stochastic loss computed for every level 1 iteration as the average loss
+   *         per partition.
+   */
   def runMiniBatchSGD(
       data: RDD[(Double, Vector)],
       gradient: Gradient,
@@ -187,8 +203,8 @@ object ParallelSGD extends Logging {
     }
 
     val stochasticLossHistory = new ArrayBuffer[Double](numIterations)
-    // Record previous weight and current one to calculate solution vector difference
 
+    // Record previous weight and current one to calculate solution vector difference
     var previousWeights: Option[Vector] = None
     var currentWeights: Option[Vector] = None
 
@@ -208,8 +224,7 @@ object ParallelSGD extends Logging {
     var weights = Vectors.dense(initialWeights.toArray)
     val n = weights.size
 
-    val random = new Random(System.nanoTime)
-    val randomPartitioner = new RandomPartitioner(data.getNumPartitions, random)
+    val randomPartitioner = new RandomPartitioner(data.getNumPartitions)
 
     var converged = false // indicates whether converged based on convergenceTol
     var i = 1
@@ -217,34 +232,38 @@ object ParallelSGD extends Logging {
       val bcWeights = data.context.broadcast(weights)
 
       /**
-        * For the first 2nd level iteration, the regVal will be initialized as sum
-        * of weight squares if it's L2 updater; for L1 updater, the same logic is followed.
-        */
+       * For the first 2nd level iteration, the regVal will be initialized as sum
+       * of weight squares if it's L2 updater; for L1 updater, the same logic is followed.
+       */
       val regVal = updater.compute(weights, Vectors.zeros(weights.size), 0, 1, regParam)._2
 
       val shuffledData = data.partitionBy(randomPartitioner)
 
       val (weightsSum, lossSum, weightsCount) = shuffledData.mapPartitions(iter => {
-        var localPreviousWeights: Option[Vector] = None
-        var localCurrentWeights: Option[Vector] = None
-        var localWeights = bcWeights.value
-        var localRegVal = regVal
-        var localConverged = false // indicates whether converged based on convergenceTol
-
-        var gradSum: BV[Double] = BDV.zeros[Double](n)
-        var lossSum = 0.0
-        var miniBatchSize = 0L
-
-        implicit val sampler = new BernoulliSampler[(Double, Vector)](miniBatchFraction)
-
+        // run mini-batch SGD per partition
         val seq = iter.toSeq
 
-        var j = 1
-        while (!localConverged && j <= numIterations2) {
-          // sample a mini-batch and compute the accumulated gradient
-          val (gradAggregate, lossAggregate, miniBatchSizeAggregate) = seq
-            .sample(System.nanoTime)
-            .aggregate[(BV[Double], Double, Long)](
+        if (seq.isEmpty) {
+          // skip partition if empty
+          Iterator.single((BDV.zeros[Double](n), 0.0, 0))
+        } else {
+          var gradSum: BV[Double] = BDV.zeros[Double](n)
+          var lossSum = 0.0
+          var miniBatchSize = 0L
+          var localPreviousWeights: Option[Vector] = None
+          var localCurrentWeights: Option[Vector] = None
+          var localWeights = bcWeights.value
+          var localRegVal = regVal
+          var localConverged = false // indicates whether converged based on convergenceTol
+
+          implicit val sampler = new BernoulliSampler[(Double, Vector)](miniBatchFraction)
+
+          var j = 1
+          while (!localConverged && j <= numIterations2) {
+            // sample a mini-batch and compute the accumulated gradient
+            val (gradAggregate, lossAggregate, miniBatchSizeAggregate) = seq
+              .sample(System.nanoTime)
+              .aggregate[(BV[Double], Double, Long)](
               (BDV.zeros[Double](n), 0.0, 0L))(
               seqop = (c, v) => (c, v) match {
                 case ((grad, loss, size), (label, features)) => {
@@ -259,33 +278,36 @@ object ParallelSGD extends Logging {
               }
             )
 
-          if (miniBatchSizeAggregate > 0) {
-            gradSum = gradAggregate
-            lossSum = lossAggregate
-            miniBatchSize = miniBatchSizeAggregate
+            if (miniBatchSizeAggregate > 0) {
+              gradSum = gradAggregate
+              lossSum = lossAggregate
+              miniBatchSize = miniBatchSizeAggregate
 
-            // update the local weights based on the average gradient in the mini-batch
-            val update = updater.compute(
-              localWeights, Vectors.fromBreeze(gradSum / miniBatchSize.toDouble),
-              stepSize, j, regParam)
-            localWeights = update._1
-            localRegVal = update._2
+              // update the local weights based on the average gradient in the mini-batch
+              val update = updater.compute(
+                localWeights, Vectors.fromBreeze(gradSum / miniBatchSize.toDouble),
+                stepSize, j, regParam)
+              localWeights = update._1
+              localRegVal = update._2
 
-            localPreviousWeights = localCurrentWeights
-            localCurrentWeights = Some(localWeights)
-            if (localPreviousWeights.isDefined && localCurrentWeights.isDefined) {
-              localConverged = isConverged(localPreviousWeights.get,
-                localCurrentWeights.get, convergenceTol)
+              localPreviousWeights = localCurrentWeights
+              localCurrentWeights = Some(localWeights)
+              if (localPreviousWeights.isDefined && localCurrentWeights.isDefined) {
+                localConverged = isConverged(localPreviousWeights.get,
+                  localCurrentWeights.get, convergenceTol)
+              }
+            } else {
+              // shouldn't get here; sampler ensures at least one sampled element
+              // regardless from the miniBatchFraction.
+              logWarning(s"Iteration ($i/$numIterations, $j/$numIterations2)." +
+                " The size of sampled batch is zero")
             }
-          } else {
-            logWarning(s"Iteration ($i/$numIterations, $j/$numIterations2)." +
-              " The size of sampled batch is zero")
+
+            j += 1
           }
 
-          j += 1
+          Iterator.single((localWeights.toBreeze, lossSum / miniBatchSize + localRegVal, 1))
         }
-
-        Iterator.single((localWeights.toBreeze, lossSum / miniBatchSize + localRegVal, 1))
       })
       .treeReduce((v1, v2) => (v1, v2) match {
         case ((weights1, loss1, count1), (weights2, loss2, count2)) =>
@@ -293,8 +315,10 @@ object ParallelSGD extends Logging {
       })
 
       if (weightsCount > 0) {
-        stochasticLossHistory.append(lossSum / weightsCount) // average loss
-        weights = Vectors.fromBreeze(weightsSum / weightsCount.toDouble) // average weights
+        // report average loss per partition
+        stochasticLossHistory.append(lossSum / weightsCount)
+        // average weights per partition
+        weights = Vectors.fromBreeze(weightsSum / weightsCount.toDouble)
 
         previousWeights = currentWeights
         currentWeights = Some(weights)
@@ -308,7 +332,7 @@ object ParallelSGD extends Logging {
       i += 1
     }
 
-    logInfo("ParallelSGD.runMiniBatchSGD finished. Last 10 stochastic losses %s".format(
+    logInfo("ParallelSGD.runMiniBatchSGD finished. Last 10 average stochastic losses %s".format(
       stochasticLossHistory.takeRight(10).mkString(", ")))
 
     (weights, stochasticLossHistory.toArray)
@@ -316,8 +340,8 @@ object ParallelSGD extends Logging {
   }
 
   /**
-    * Alias of [[runMiniBatchSGD]] with convergenceTol set to default value of 0.001.
-    */
+   * Alias of [[runMiniBatchSGD]] with convergenceTol set to default value of 0.001.
+   */
   def runMiniBatchSGD(
       data: RDD[(Double, Vector)],
       gradient: Gradient,
@@ -347,7 +371,7 @@ object ParallelSGD extends Logging {
   }
 
   private implicit def seqToSampledSeq[T: ClassTag](seq: Seq[T])
-      (implicit sampler: BernoulliSampler[T]): SampledSeq[T] = {
+      (implicit sampler: RandomSampler[T, T]): SampledSeq[T] = {
     new SampledSeq[T](seq, sampler)
   }
 
