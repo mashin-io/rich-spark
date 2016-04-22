@@ -21,18 +21,14 @@ import java.io.{BufferedReader, InputStreamReader}
 import io.mashin.rich.spark.RichRDD._
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.{HttpRequest, HttpResponse}
-import org.apache.spark.{SparkConf, SparkContext}
-import org.scalatest._
 
-class HttpRDDSuite extends FunSuite with ShouldMatchers {
+class HttpRDDSuite extends RichSparkTestSuite {
 
-  test("HttpRDD Get") {
+  sparkTest("HttpRDD Get") {sc =>
     val serverIP = HttpMockConfig.serverIP
     val serverPort = HttpMockConfig.serverPort
     val mockServer = new HttpMock
     mockServer.start()
-
-    val sc = sparkContext("HttpRDD-Get")
 
     val req: Int => HttpRequest = {i =>
       val pageIndex = i + 1
@@ -56,12 +52,7 @@ class HttpRDDSuite extends FunSuite with ShouldMatchers {
         iter.zipWithIndex.map(t => HttpMockConfig.isValidElement(t._1, i, t._2)))
       .reduce(_ && _) should be (true)
 
-    sc.stop()
     mockServer.stop()
-  }
-
-  private def sparkContext(name: String): SparkContext = {
-    new SparkContext(new SparkConf().setAppName(name).setMaster("local[*]"))
   }
 
 }

@@ -17,16 +17,12 @@
 package io.mashin.rich.spark
 
 import io.mashin.rich.spark.RichRDD._
-import org.apache.spark.{SparkConf, SparkContext}
-import org.scalatest.{ShouldMatchers, FunSuite}
 
 import scala.util.Random
 
-class RichPairRDDFunctionsSuite extends FunSuite with ShouldMatchers {
+class RichPairRDDFunctionsSuite extends RichSparkTestSuite {
 
-  test("Scan Left Pair RDD") {
-    val sc = sparkContext("Scan-Left-Pair-RDD")
-
+  sparkTest("Scan Left Pair RDD") {sc =>
     val parts = 4
     val partSize = 1000
 
@@ -41,13 +37,9 @@ class RichPairRDDFunctionsSuite extends FunSuite with ShouldMatchers {
       scanLeftTest((1 to parts * partSize).zip(
         (1 to parts * partSize).map(_ => i + Random.nextInt(10))).toArray, i, f)
     }
-
-    sc.stop()
   }
 
-  test("Scan Right Pair RDD") {
-    val sc = sparkContext("Scan-Right-Pair-RDD")
-
+  sparkTest("Scan Right Pair RDD") {sc =>
     val parts = 4
     val partSize = 1000
 
@@ -63,12 +55,6 @@ class RichPairRDDFunctionsSuite extends FunSuite with ShouldMatchers {
       scanRightTest((1 to parts * partSize).zip(
         (1 to parts * partSize).map(_ => i + Random.nextInt(10))).toArray, i, f)
     }
-
-    sc.stop()
-  }
-
-  private def sparkContext(name: String): SparkContext = {
-    new SparkContext(new SparkConf().setAppName(name).setMaster("local[*]"))
   }
 
 }

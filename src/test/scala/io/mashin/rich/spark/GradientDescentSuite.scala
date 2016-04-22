@@ -17,20 +17,13 @@
 package io.mashin.rich.spark
 
 import io.mashin.rich.spark.GradientDescentDataGen._
-import org.apache.spark.mllib.optimization.{ParallelSGD, GradientDescent, LeastSquaresGradient, SquaredL2Updater}
-import org.apache.spark.{SparkConf, SparkContext}
-import org.scalatest._
+import org.apache.spark.mllib.optimization.{GradientDescent, LeastSquaresGradient,
+                                            ParallelSGD, SquaredL2Updater}
 
-class GradientDescentSuite extends FunSuite with ShouldMatchers {
+class GradientDescentSuite extends RichSparkTestSuite {
 
-  private def sparkContext(name: String): SparkContext = {
-    new SparkContext(new SparkConf().setAppName(name).setMaster("local[*]"))
-  }
-
-  test("MLLib Gradient Descent") {
-    implicit val sc = sparkContext("MLLib-Gradient-Descent")
-
-    val data = generate
+  sparkTest("MLLib Gradient Descent") {sc =>
+    val data = generate(sc)
 
     val gradient = new LeastSquaresGradient
     val updater = new SquaredL2Updater
@@ -45,14 +38,10 @@ class GradientDescentSuite extends FunSuite with ShouldMatchers {
     println("wOriginal: " + wOriginal)
     println("wHat: " + wHat)
     println(s"RMSE: ${rmse(data, wHat)}")
-
-    sc.stop()
   }
 
-  test("Rich-Spark Parallel Stochastic Gradient Descent") {
-    implicit val sc = sparkContext("Rich-Spark-Parallel-Stochastic-Gradient-Descent")
-
-    val data = generate
+  sparkTest("Rich-Spark Parallel Stochastic Gradient Descent") {sc =>
+    val data = generate(sc)
 
     val gradient = new LeastSquaresGradient
     val updater = new SquaredL2Updater
@@ -67,8 +56,6 @@ class GradientDescentSuite extends FunSuite with ShouldMatchers {
     println("wOriginal: " + wOriginal)
     println("wHat: " + wHat)
     println(s"RMSE: ${rmse(data, wHat)}")
-
-    sc.stop()
   }
 
 }
