@@ -18,6 +18,7 @@ package io.mashin.rich.spark
 
 import org.apache.spark.SparkContext
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
+import org.apache.spark.mllib.regression.{LinearRegressionModel, LabeledPoint}
 import org.apache.spark.rdd.RDD
 
 import scala.util.Random
@@ -46,6 +47,19 @@ object GradientDescentDataGen {
         Vectors.dense(Array.tabulate[Double](d)(_ => Random.nextDouble))
       })
       .map(v => (f(v), v))
+  }
+
+  implicit def labeledPointsToPairs(rdd: RDD[LabeledPoint]): RDD[(Double, Vector)] = {
+    rdd.map(p => (p.label, p.features))
+  }
+
+  implicit def pairsToLabeledPoints(rdd: RDD[(Double, Vector)]): RDD[LabeledPoint] = {
+    rdd.map(p => LabeledPoint(p._1, p._2))
+  }
+
+  def predictionAndObservations(data: RDD[(Double, Vector)], model: LinearRegressionModel)
+    : RDD[(Double, Double)] = {
+    model.predict(data.map(_._2)).zip(data.map(_._1))
   }
 
   def rmse(data: RDD[(Double, Vector)], weights: Vector): Double = {

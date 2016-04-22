@@ -17,4 +17,10 @@ abstract class RichSparkTestSuite extends FunSuite with ShouldMatchers {
     }
   }
 
+  def time(proc: => Unit): Long = {
+    val t0 = System.nanoTime
+    proc
+    System.nanoTime - t0
+  }
+
 }
