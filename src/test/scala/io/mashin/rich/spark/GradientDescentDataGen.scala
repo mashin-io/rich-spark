@@ -12,11 +12,12 @@ object GradientDescentDataGen {
   val d: Int = 10
   val wOriginal: Vector = Vectors.dense(Array.tabulate(d)(_ => Random.nextGaussian))
   val stepSize: Double = 1e-2
-  val numIterations: Int = 1000
+  val numIterations: Int = 10
+  val numIterations2: Int = 1000
   val w0: Vector = Vectors.dense(Array.tabulate(d)(_ => 10 * Random.nextDouble))
   val regParam: Double = 1e-6
-  val miniBatchFraction: Double = 0.001
-  val convergenceTol: Double = 0.0001
+  val miniBatchFraction: Double = 1
+  val convergenceTol: Double = 0.001
 
   def f(x: Vector): Double = {
     (0 until d).map(i => x(i) * wOriginal(i)).sum
