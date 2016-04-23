@@ -257,72 +257,15 @@ object ParallelSGD extends Logging {
 
       val (weightsSum, lossSum, weightsCount) = shuffledData.mapPartitions(iter => {
         // run mini-batch SGD per partition
-        val seq = iter.toSeq
-
-        if (seq.isEmpty) {
+        if (iter.isEmpty) {
           // skip partition if empty
           Iterator.single((BDV.zeros[Double](n), 0.0, 0))
         } else {
-          var gradSum: BV[Double] = BDV.zeros[Double](n)
-          var lossSum = 0.0
-          var miniBatchSize = 0L
-          var localPreviousWeights: Option[Vector] = None
-          var localCurrentWeights: Option[Vector] = None
-          var localWeights = bcWeights.value
-          var localRegVal = regVal
-          var localConverged = false // indicates whether converged based on convergenceTol
-
-          implicit val sampler = new BernoulliSampler[(Double, Vector)](miniBatchFraction)
-
-          var j = 1
-          while (!localConverged && j <= numIterations2) {
-            // sample a mini-batch and compute the accumulated gradient
-            val (gradAggregate, lossAggregate, miniBatchSizeAggregate) = seq
-              .sample(System.nanoTime)
-              .aggregate[(BV[Double], Double, Long)](
-              (BDV.zeros[Double](n), 0.0, 0L))(
-              seqop = (c, v) => (c, v) match {
-                case ((grad, loss, size), (label, features)) => {
-                  val l = gradient.compute(features, label, localWeights, Vectors.fromBreeze(grad))
-                  (grad, loss + l, size + 1)
-                }
-              },
-              combop = (c1, c2) => (c1, c2) match {
-                case ((grad1, loss1, miniBatchSize1), (grad2, loss2, miniBatchSize2)) => {
-                  (grad1 += grad2, loss1 + loss2, miniBatchSize1 + miniBatchSize2)
-                }
-              }
-            )
-
-            if (miniBatchSizeAggregate > 0) {
-              gradSum = gradAggregate
-              lossSum = lossAggregate
-              miniBatchSize = miniBatchSizeAggregate
-
-              // update the local weights based on the average gradient in the mini-batch
-              val update = updater.compute(
-                localWeights, Vectors.fromBreeze(gradSum / miniBatchSize.toDouble),
-                stepSize, j, regParam)
-              localWeights = update._1
-              localRegVal = update._2
-
-              localPreviousWeights = localCurrentWeights
-              localCurrentWeights = Some(localWeights)
-              if (localPreviousWeights.isDefined && localCurrentWeights.isDefined) {
-                localConverged = isConverged(localPreviousWeights.get,
-                  localCurrentWeights.get, convergenceTol)
-              }
-            } else {
-              // shouldn't get here; sampler ensures at least one sampled element
-              // regardless from the miniBatchFraction.
-              logWarning(s"Iteration ($i/$numIterations, $j/$numIterations2)." +
-                " The size of sampled batch is zero")
-            }
-
-            j += 1
-          }
-
-          Iterator.single((localWeights.toBreeze, lossSum / miniBatchSize + localRegVal, 1))
+          val (localWeights, localLoss) = runLocalMiniBatchSGD(
+            iter.toSeq, i, gradient, updater, stepSize,
+            numIterations, numIterations2, regParam,
+            miniBatchFraction, bcWeights.value, regVal, convergenceTol)
+          Iterator.single((localWeights, localLoss, 1))
         }
       })
       .treeReduce((v1, v2) => (v1, v2) match {
@@ -353,6 +296,83 @@ object ParallelSGD extends Logging {
 
     (weights, stochasticLossHistory.toArray)
 
+  }
+
+  def runLocalMiniBatchSGD(
+      data: Seq[(Double, Vector)],
+      i: Int,
+      gradient: Gradient,
+      updater: Updater,
+      stepSize: Double,
+      numIterations: Int,
+      numIterations2: Int,
+      regParam: Double,
+      miniBatchFraction: Double,
+      initialWeights: Vector,
+      initialRegVal: Double,
+      convergenceTol: Double)
+    : (BV[Double], Double) = {
+
+    val n = initialWeights.size
+    var lossSum = 0.0
+    var miniBatchSize = 0L
+    var localPreviousWeights: Option[Vector] = None
+    var localCurrentWeights: Option[Vector] = None
+    var localWeights = initialWeights
+    var localRegVal = initialRegVal
+    var localConverged = false // indicates whether converged based on convergenceTol
+
+    implicit val sampler = new BernoulliSampler[(Double, Vector)](miniBatchFraction)
+
+    var j = 1
+    while (!localConverged && j <= numIterations2) {
+      // sample a mini-batch and compute the accumulated gradient
+      val (gradAggregate, lossAggregate, miniBatchSizeAggregate) = data
+        .sample(System.nanoTime)
+        .aggregate[(BV[Double], Double, Long)](
+          (BDV.zeros[Double](n), 0.0, 0L))(
+          seqop = (c, v) => (c, v) match {
+            case ((grad, loss, size), (label, features)) => {
+              val l = gradient.compute(features, label, localWeights, Vectors.fromBreeze(grad))
+              (grad, loss + l, size + 1)
+            }
+          },
+          combop = (c1, c2) => (c1, c2) match {
+            case ((grad1, loss1, miniBatchSize1), (grad2, loss2, miniBatchSize2)) => {
+              (grad1 += grad2, loss1 + loss2, miniBatchSize1 + miniBatchSize2)
+            }
+          }
+        )
+
+      if (miniBatchSizeAggregate > 0) {
+        lossSum = lossAggregate
+        miniBatchSize = miniBatchSizeAggregate
+
+        // update the local weights based on the average gradient in the mini-batch
+        val update = updater.compute(
+          localWeights, Vectors.fromBreeze(gradAggregate / miniBatchSize.toDouble),
+          stepSize, j, regParam)
+        localWeights = update._1
+        localRegVal = update._2
+
+        localPreviousWeights = localCurrentWeights
+        localCurrentWeights = Some(localWeights)
+        if (localPreviousWeights.isDefined && localCurrentWeights.isDefined) {
+          localConverged = isConverged(localPreviousWeights.get,
+            localCurrentWeights.get, convergenceTol)
+        }
+      } else {
+        // shouldn't get here; sampler ensures at least one sampled element
+        // regardless from the miniBatchFraction.
+        logWarning(s"Iteration ($i/$numIterations, $j/$numIterations2)." +
+          " The size of sampled batch is zero")
+      }
+
+      j += 1
+    }
+
+    //(the updated weights, the regularized average loss of the last iteration)
+    (localWeights.toBreeze, lossSum / miniBatchSize + localRegVal)
   }
 
   /**
