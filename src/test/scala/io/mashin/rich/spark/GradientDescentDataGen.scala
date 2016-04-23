@@ -34,7 +34,7 @@ object GradientDescentDataGen {
   val w0: Vector = Vectors.dense(Array.tabulate(d)(_ => 10 * Random.nextDouble))
   val regParam: Double = 1e-6
   val miniBatchFraction: Double = 1
-  val convergenceTol: Double = 0.001
+  val convergenceTol: Double = 0
 
   def f(x: Vector, w: Vector = wOriginal): Double = {
     (0 until d).map(i => x(i) * w(i)).sum

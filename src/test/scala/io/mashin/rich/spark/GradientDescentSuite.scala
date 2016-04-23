@@ -17,45 +17,68 @@
 package io.mashin.rich.spark
 
 import io.mashin.rich.spark.GradientDescentDataGen._
-import org.apache.spark.mllib.optimization.{GradientDescent, LeastSquaresGradient,
-                                            ParallelSGD, SquaredL2Updater}
+import org.apache.spark.SparkContext
+import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.optimization._
 
 class GradientDescentSuite extends RichSparkTestSuite {
 
-  sparkTest("MLLib Gradient Descent") {sc =>
-    val data = generate(sc)
+  private def testCase(sc: SparkContext, gradient: Gradient, updater: Updater) {
+    val data = generate(sc).cache()
+    data.count()
 
-    val gradient = new LeastSquaresGradient
-    val updater = new SquaredL2Updater
+    var res1: (Vector, Array[Double]) = null
+    val t1 = time {
+      res1 = ParallelSGD.runMiniBatchSGD(
+        data, gradient, updater,
+        stepSize, numIterations, numIterations2,
+        regParam, miniBatchFraction,
+        w0, convergenceTol)
+    }
+    val (wHat1, losses1) = res1
+    val rmse1 = rmse(data, wHat1)
 
-    val (wHat, losses) = GradientDescent.runMiniBatchSGD(
-      data, gradient, updater,
-      stepSize, numIterations2,
-      regParam, miniBatchFraction,
-      w0, convergenceTol)
+    var res2: (Vector, Array[Double]) = null
+    val t2 = time {
+      res2 = GradientDescent.runMiniBatchSGD(
+        data, gradient, updater,
+        stepSize, numIterations * numIterations2,
+        regParam, miniBatchFraction,
+        w0, convergenceTol)
+    }
+    val (wHat2, losses2) = res2
+    val rmse2 = rmse(data, wHat2)
 
-    println("losses: " + losses.toList.mkString(", "))
+    t1 should be < t2
+    rmse1 should be < rmse2
+    losses1.last should be < losses2.last
+
+    println("ParallelSGD losses: " + losses1.toList.mkString(", "))
+    println("GradientDescent losses: " + losses2.toList.mkString(", "))
+
     println("wOriginal: " + wOriginal)
-    println("wHat: " + wHat)
-    println(s"RMSE: ${rmse(data, wHat)}")
+    println("ParallelSGD wHat: " + wHat1)
+    println("GradientDescent wHat: " + wHat2)
+
+    println(s"ParallelSGD RMSE: ${rmse1}")
+    println(s"GradientDescent RMSE: ${rmse2}")
+
+    println(s"ParallelSGD Time: ${formatDuration(t1)}")
+    println(s"GradientDescent Time: ${formatDuration(t2)}")
+
+    println(s"ParallelSGD (${formatDuration(t1)}) " +
+      s"is ${t2.toDouble/t1.toDouble}X" +
+      s" faster than GradientDescent (${formatDuration(t2)})")
+    println(s"RMSE: ParallelSGD " +
+      s"is ${rmse2/rmse1}X" +
+      s" more accurate than GradientDescent")
   }
 
-  sparkTest("Rich-Spark Parallel Stochastic Gradient Descent") {sc =>
-    val data = generate(sc)
-
+  sparkTest("ParallelSGD VS GradientDescent") {sc =>
     val gradient = new LeastSquaresGradient
     val updater = new SquaredL2Updater
-
-    val (wHat, losses) = ParallelSGD.runMiniBatchSGD(
-      data, gradient, updater,
-      stepSize, numIterations, numIterations2,
-      regParam, miniBatchFraction,
-      w0, convergenceTol)
-
-    println("losses: " + losses.toList.mkString(", "))
-    println("wOriginal: " + wOriginal)
-    println("wHat: " + wHat)
-    println(s"RMSE: ${rmse(data, wHat)}")
+    testCase(sc, gradient, updater)
   }
+
 
 }

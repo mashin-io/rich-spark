@@ -35,15 +35,15 @@ class LinearRegressionWithParallelSGDSuite extends RichSparkTestSuite {
     var model2: LinearRegressionModel = null
     val t2 = time {
       model2 = LinearRegressionWithSGD.train(data,
-        numIterations2, stepSize, miniBatchFraction, w0)
+        numIterations * numIterations2, stepSize, miniBatchFraction, w0)
     }
 
     val metrics1 = new RegressionMetrics(predictionAndObservations(data, model1))
     val metrics2 = new RegressionMetrics(predictionAndObservations(data, model2))
 
-    t1 < t2 should be (true)
-    metrics1.meanAbsoluteError < metrics2.meanAbsoluteError should be (true)
-    metrics1.rootMeanSquaredError < metrics2.rootMeanSquaredError should be (true)
+    t1 should be < t2
+    metrics1.meanAbsoluteError should be < metrics2.meanAbsoluteError
+    metrics1.rootMeanSquaredError should be < metrics2.rootMeanSquaredError
 
     println(s"LinearRegressionWithParallelSGD (${formatDuration(t1)}) " +
       s"is ${t2.toDouble/t1.toDouble}X" +
