@@ -17,16 +17,17 @@
 
 package org.apache.spark.streaming.scheduler
 
+import org.apache.spark.streaming.event.Event
+
 import scala.util.{Failure, Try}
 
-import org.apache.spark.streaming.Time
 import org.apache.spark.util.{CallSite, Utils}
 
 /**
  * Class representing a Spark computation. It may contain multiple Spark jobs.
  */
 private[streaming]
-class Job(val time: Time, func: () => _) {
+class Job(val event: Event, func: () => _) {
   private var _id: String = _
   private var _outputOpId: Int = _
   private var isSet = false
@@ -71,7 +72,7 @@ class Job(val time: Time, func: () => _) {
       throw new IllegalStateException("Cannot call setOutputOpId more than once")
     }
     isSet = true
-    _id = s"streaming job $time.$outputOpId"
+    _id = s"streaming job ${event.instanceId}.$outputOpId"
     _outputOpId = outputOpId
   }
 
@@ -96,7 +97,8 @@ class Job(val time: Time, func: () => _) {
       None
     }
     OutputOperationInfo(
-      time, outputOpId, callSite.shortForm, callSite.longForm, _startTime, _endTime, failureReason)
+      event, outputOpId, callSite.shortForm, callSite.longForm,
+      _startTime, _endTime, failureReason)
   }
 
   override def toString: String = id
