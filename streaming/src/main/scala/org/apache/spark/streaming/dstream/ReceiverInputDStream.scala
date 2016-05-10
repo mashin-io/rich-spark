@@ -17,16 +17,17 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
 import org.apache.spark.rdd.{BlockRDD, RDD}
 import org.apache.spark.storage.BlockId
-import org.apache.spark.streaming.{StreamingContext, Time}
+import org.apache.spark.streaming.StreamingContext
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.rdd.WriteAheadLogBackedBlockRDD
 import org.apache.spark.streaming.receiver.Receiver
-import org.apache.spark.streaming.scheduler.{RateController, ReceivedBlockInfo, StreamInputInfo}
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.{Job, RateController, ReceivedBlockInfo, StreamInputInfo}
 import org.apache.spark.streaming.util.WriteAheadLogUtils
+
+import scala.reflect.ClassTag
 
 /**
  * Abstract class for defining any [[org.apache.spark.streaming.dstream.InputDStream]]
@@ -35,7 +36,8 @@ import org.apache.spark.streaming.util.WriteAheadLogUtils
  * define [[getReceiver]] function that gets the receiver object of type
  * [[org.apache.spark.streaming.receiver.Receiver]] that will be sent
  * to the workers to receive data.
- * @param _ssc Streaming context that will execute this input stream
+  *
+  * @param _ssc Streaming context that will execute this input stream
  * @tparam T Class type of the object of this stream
  */
 abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
@@ -64,12 +66,19 @@ abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
 
   def stop() {}
 
+  override def generateJob(event: Event): Option[Job] = {
+    // allocate received blocks to batch
+    val receiverTracker = ssc.scheduler.receiverTracker
+    receiverTracker.allocateBlocksToBatch(event, id)
+    None
+  }
+
   /**
    * Generates RDDs with blocks received by the receiver of this stream. */
-  override def compute(validTime: Time): Option[RDD[T]] = {
+  override def compute(event: Event): Option[RDD[T]] = {
     val blockRDD = {
 
-      if (validTime < graph.startTime) {
+      if (event.time < graph.startTime) {
         // If this is called for any time before the start time of the context,
         // then this returns an empty RDD. This may happen when recovering from a
         // driver failure without any write ahead log to recover pre-failure data.
@@ -78,20 +87,20 @@ abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
         // Otherwise, ask the tracker for all the blocks that have been allocated to this stream
         // for this batch
         val receiverTracker = ssc.scheduler.receiverTracker
-        val blockInfos = receiverTracker.getBlocksOfBatch(validTime).getOrElse(id, Seq.empty)
+        val blockInfos = receiverTracker.getBlocksOfBatchAndStream(event, id)
 
         // Register the input blocks information into InputInfoTracker
         val inputInfo = StreamInputInfo(id, blockInfos.flatMap(_.numRecords).sum)
-        ssc.scheduler.inputInfoTracker.reportInfo(validTime, inputInfo)
+        ssc.scheduler.inputInfoTracker.reportInfo(event, inputInfo)
 
         // Create the BlockRDD
-        createBlockRDD(validTime, blockInfos)
+        createBlockRDD(event, blockInfos)
       }
     }
     Some(blockRDD)
   }
 
-  private[streaming] def createBlockRDD(time: Time, blockInfos: Seq[ReceivedBlockInfo]): RDD[T] = {
+  private[streaming] def createBlockRDD(event: Event, blockInfos: Seq[ReceivedBlockInfo]): RDD[T] = {
 
     if (blockInfos.nonEmpty) {
       val blockIds = blockInfos.map { _.blockId.asInstanceOf[BlockId] }.toArray

@@ -203,11 +203,9 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   }
 
   /** Allocate all unallocated blocks to the given batch. */
-  def allocateBlocksToBatch(batchEvent: Event, streamIds: Seq[Int]): Unit = {
+  def allocateBlocksToBatch(batchEvent: Event, streamId: Int): Unit = {
     if (receiverInputStreams.nonEmpty) {
-      streamIds.foreach {
-        receivedBlockTracker.allocateBlocksToBatchAndStream(batchEvent, _)
-      }
+      receivedBlockTracker.allocateBlocksToBatchAndStream(batchEvent, streamId)
     }
   }
 
