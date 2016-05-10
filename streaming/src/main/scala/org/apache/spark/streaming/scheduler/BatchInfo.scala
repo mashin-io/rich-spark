@@ -18,12 +18,13 @@
 package org.apache.spark.streaming.scheduler
 
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.streaming.Time
+import org.apache.spark.streaming.event.Event
 
 /**
  * :: DeveloperApi ::
  * Class having information on completed batches.
- * @param batchTime   Time of the batch
+ *
+ * @param batchEvent   Event of the batch
  * @param streamIdToInputInfo A map of input stream id to its input info
  * @param submissionTime  Clock time of when jobs of this batch was submitted to
  *                        the streaming scheduler queue
@@ -33,7 +34,7 @@ import org.apache.spark.streaming.Time
  */
 @DeveloperApi
 case class BatchInfo(
-    batchTime: Time,
+    batchEvent: Event,
     streamIdToInputInfo: Map[Int, StreamInputInfo],
     submissionTime: Long,
     processingStartTime: Option[Long],

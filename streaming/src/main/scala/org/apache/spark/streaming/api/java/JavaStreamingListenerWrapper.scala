@@ -17,9 +17,9 @@
 
 package org.apache.spark.streaming.api.java
 
-import scala.collection.JavaConverters._
-
 import org.apache.spark.streaming.scheduler._
+
+import scala.collection.JavaConverters._
 
 /**
  * A wrapper to convert a [[JavaStreamingListener]] to a [[StreamingListener]].
@@ -52,7 +52,7 @@ private[streaming] class JavaStreamingListenerWrapper(javaStreamingListener: Jav
   private def toJavaOutputOperationInfo(
       outputOperationInfo: OutputOperationInfo): JavaOutputOperationInfo = {
     JavaOutputOperationInfo(
-      outputOperationInfo.batchTime,
+      outputOperationInfo.batchEvent,
       outputOperationInfo.id,
       outputOperationInfo.name,
       outputOperationInfo.description: String,
@@ -64,7 +64,7 @@ private[streaming] class JavaStreamingListenerWrapper(javaStreamingListener: Jav
 
   private def toJavaBatchInfo(batchInfo: BatchInfo): JavaBatchInfo = {
     JavaBatchInfo(
-      batchInfo.batchTime,
+      batchInfo.batchEvent,
       batchInfo.streamIdToInputInfo.mapValues(toJavaStreamInputInfo(_)).asJava,
       batchInfo.submissionTime,
       batchInfo.processingStartTime.getOrElse(-1),

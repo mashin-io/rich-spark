@@ -17,7 +17,7 @@
 
 package org.apache.spark.streaming.api.java
 
-import org.apache.spark.streaming.Time
+import org.apache.spark.streaming.event.Event
 
 private[streaming] trait PythonStreamingListener{
 
@@ -158,7 +158,7 @@ private[streaming] class JavaStreamingListenerReceiverStopped(val receiverInfo: 
 /**
  * Class having information on batches.
  *
- * @param batchTime Time of the batch
+ * @param batchEvent Event of the batch
  * @param streamIdToInputInfo A map of input stream id to its input info
  * @param submissionTime Clock time of when jobs of this batch was submitted to the streaming
  *                       scheduler queue
@@ -181,7 +181,7 @@ private[streaming] class JavaStreamingListenerReceiverStopped(val receiverInfo: 
  * @param outputOperationInfos The output operations in this batch
  */
 private[streaming] case class JavaBatchInfo(
-    batchTime: Time,
+    batchEvent: Event,
     streamIdToInputInfo: java.util.Map[Int, JavaStreamInputInfo],
     submissionTime: Long,
     processingStartTime: Long,
@@ -223,7 +223,7 @@ private[streaming] case class JavaReceiverInfo(
 /**
  * Class having information on output operations.
  *
- * @param batchTime Time of the batch
+ * @param batchEvent Event of the batch
  * @param id Id of this output operation. Different output operations have different ids in a batch.
  * @param name The name of this output operation.
  * @param description The description of this output operation.
@@ -235,7 +235,7 @@ private[streaming] case class JavaReceiverInfo(
  *                      successful, this field is `null`.
  */
 private[streaming] case class JavaOutputOperationInfo(
-    batchTime: Time,
+    batchEvent: Event,
     id: Int,
     name: String,
     description: String,
