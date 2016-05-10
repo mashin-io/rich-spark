@@ -19,6 +19,8 @@ package org.apache.spark.streaming.scheduler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
+import org.apache.spark.streaming.event.Event
+
 import scala.collection.mutable.HashMap
 import scala.concurrent.ExecutionContext
 import scala.language.existentials
@@ -201,20 +203,22 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   }
 
   /** Allocate all unallocated blocks to the given batch. */
-  def allocateBlocksToBatch(batchTime: Time): Unit = {
+  def allocateBlocksToBatch(batchEvent: Event, streamIds: Seq[Int]): Unit = {
     if (receiverInputStreams.nonEmpty) {
-      receivedBlockTracker.allocateBlocksToBatch(batchTime)
+      streamIds.foreach {
+        receivedBlockTracker.allocateBlocksToBatchAndStream(batchEvent, _)
+      }
     }
   }
 
   /** Get the blocks for the given batch and all input streams. */
-  def getBlocksOfBatch(batchTime: Time): Map[Int, Seq[ReceivedBlockInfo]] = {
-    receivedBlockTracker.getBlocksOfBatch(batchTime)
+  def getBlocksOfBatch(batchEvent: Event): Map[Int, Seq[ReceivedBlockInfo]] = {
+    receivedBlockTracker.getBlocksOfBatch(batchEvent)
   }
 
   /** Get the blocks allocated to the given batch and stream. */
-  def getBlocksOfBatchAndStream(batchTime: Time, streamId: Int): Seq[ReceivedBlockInfo] = {
-    receivedBlockTracker.getBlocksOfBatchAndStream(batchTime, streamId)
+  def getBlocksOfBatchAndStream(batchEvent: Event, streamId: Int): Seq[ReceivedBlockInfo] = {
+    receivedBlockTracker.getBlocksOfBatchAndStream(batchEvent, streamId)
   }
 
   /**
@@ -238,7 +242,8 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
   /**
    * Get the executors allocated to each receiver.
-   * @return a map containing receiver ids to optional executor ids.
+    *
+    * @return a map containing receiver ids to optional executor ids.
    */
   def allocatedExecutors(): Map[Int, Option[String]] = synchronized {
     if (isTrackerStarted) {
