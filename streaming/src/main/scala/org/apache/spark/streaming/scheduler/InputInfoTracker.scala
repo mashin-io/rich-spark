@@ -17,6 +17,8 @@
 
 package org.apache.spark.streaming.scheduler
 
+import org.apache.spark.streaming.event.Event
+
 import scala.collection.mutable
 
 import org.apache.spark.annotation.DeveloperApi
@@ -57,32 +59,32 @@ object StreamInputInfo {
 private[streaming] class InputInfoTracker(ssc: StreamingContext) extends Logging {
 
   // Map to track all the InputInfo related to specific batch time and input stream.
-  private val batchTimeToInputInfos =
-    new mutable.HashMap[Time, mutable.HashMap[Int, StreamInputInfo]]
+  private val batchEventToInputInfos =
+    new mutable.HashMap[Event, mutable.HashMap[Int, StreamInputInfo]]
 
   /** Report the input information with batch time to the tracker */
-  def reportInfo(batchTime: Time, inputInfo: StreamInputInfo): Unit = synchronized {
-    val inputInfos = batchTimeToInputInfos.getOrElseUpdate(batchTime,
+  def reportInfo(batchEvent: Event, inputInfo: StreamInputInfo): Unit = synchronized {
+    val inputInfos = batchEventToInputInfos.getOrElseUpdate(batchEvent,
       new mutable.HashMap[Int, StreamInputInfo]())
 
     if (inputInfos.contains(inputInfo.inputStreamId)) {
       throw new IllegalStateException(s"Input stream ${inputInfo.inputStreamId} for batch" +
-        s"$batchTime is already added into InputInfoTracker, this is an illegal state")
+        s"$batchEvent is already added into InputInfoTracker, this is a illegal state")
     }
     inputInfos += ((inputInfo.inputStreamId, inputInfo))
   }
 
   /** Get the all the input stream's information of specified batch time */
-  def getInfo(batchTime: Time): Map[Int, StreamInputInfo] = synchronized {
-    val inputInfos = batchTimeToInputInfos.get(batchTime)
+  def getInfo(batchEvent: Event): Map[Int, StreamInputInfo] = synchronized {
+    val inputInfos = batchEventToInputInfos.get(batchEvent)
     // Convert mutable HashMap to immutable Map for the caller
     inputInfos.map(_.toMap).getOrElse(Map[Int, StreamInputInfo]())
   }
 
   /** Cleanup the tracked input information older than threshold batch time */
   def cleanup(batchThreshTime: Time): Unit = synchronized {
-    val timesToCleanup = batchTimeToInputInfos.keys.filter(_ < batchThreshTime)
-    logInfo(s"remove old batch metadata: ${timesToCleanup.mkString(" ")}")
-    batchTimeToInputInfos --= timesToCleanup
+    val eventsToCleanup = batchEventToInputInfos.keys.filter(_.time < batchThreshTime)
+    logInfo(s"remove old batch metadata: ${eventsToCleanup.mkString(" ")}")
+    batchEventToInputInfos --= eventsToCleanup
   }
 }
