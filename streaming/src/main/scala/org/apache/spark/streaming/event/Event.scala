@@ -10,8 +10,10 @@ import org.apache.spark.util.ListenerBus
 
 abstract class Event(
     val eventSource: EventSource,
-    val time: Time = Time(System.currentTimeMillis),
-    val instanceId: Long = Event.nextInstanceId) {
+    val index: Long,
+    val time: Time = Time(System.currentTimeMillis)) {
+
+  val instanceId: Long = Event.nextInstanceId
 
   override def hashCode(): Int = instanceId.hashCode()
 

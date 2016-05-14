@@ -3,8 +3,8 @@ package org.apache.spark.streaming.event
 
 import org.apache.spark.streaming.{Duration, StreamingContext, Time}
 
-case class TimerEvent(source: EventSource, override val time: Time, index: Long)
-  extends Event(source)
+case class TimerEvent(source: EventSource, override val time: Time, override val index: Long)
+  extends Event(source, index)
 
 class TimerEventSource(
     @transient ssc: StreamingContext,
