@@ -57,15 +57,6 @@ class TimerEventSource(
     logDebug(s"Timer ($name) started, first timer event emits on $nextTime ms")
   }
 
-  override def restart() = start()
-
-  override def stop(): Unit = synchronized {
-    if (!stopped) {
-      stopped = true
-      logDebug(s"Timer ($name) stopped")
-    }
-  }
-
   private def loop(): Unit = {
     val clock = context.clock
     var index = 0
@@ -77,6 +68,21 @@ class TimerEventSource(
       nextTime += period
     }
     stop()
+  }
+
+  override def restart() = start()
+
+  override def stop(): Unit = synchronized {
+    if (!stopped) {
+      stopped = true
+      logDebug(s"Timer ($name) stopped")
+    }
+  }
+
+  override def between(from: Time, to: Time): Seq[Event] = {
+    from.to(to, period)
+      .filter(t => t >= startTime && t <= endTime)
+      .map(t => TimerEvent(this, t, ((t - startTime) / period).toInt))
   }
 
 }

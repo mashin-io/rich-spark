@@ -64,4 +64,7 @@ abstract class EventSource(
   def start()
   def restart()
   def stop()
+
+  def between(from: Time, to: Time): Seq[Event] = Seq.empty
+
 }
