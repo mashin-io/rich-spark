@@ -17,21 +17,23 @@
 
 package org.apache.spark.streaming.scheduler
 
-import scala.util.{Failure, Success, Try}
+import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
+import org.apache.spark.streaming.event._
 import org.apache.spark.streaming.{Checkpoint, CheckpointWriter, Time}
-import org.apache.spark.streaming.util.RecurringTimer
-import org.apache.spark.util.{Clock, EventLoop, ManualClock, Utils}
+import org.apache.spark.util.{EventLoop, ManualClock}
+
+import scala.util.{Failure, Success, Try}
 
 /** Event classes for JobGenerator */
 private[scheduler] sealed trait JobGeneratorEvent
-private[scheduler] case class GenerateJobs(time: Time) extends JobGeneratorEvent
-private[scheduler] case class ClearMetadata(time: Time) extends JobGeneratorEvent
+private[scheduler] case class GenerateJobs(event: Event) extends JobGeneratorEvent
+private[scheduler] case class ClearMetadata(event: Event) extends JobGeneratorEvent
 private[scheduler] case class DoCheckpoint(
-    time: Time, clearCheckpointDataLater: Boolean) extends JobGeneratorEvent
-private[scheduler] case class ClearCheckpointData(time: Time) extends JobGeneratorEvent
+    event: Event, clearCheckpointDataLater: Boolean) extends JobGeneratorEvent
+private[scheduler] case class ClearCheckpointData(event: Event) extends JobGeneratorEvent
 
 /**
  * This class generates jobs from DStreams as well as drives checkpointing and cleaning
@@ -43,21 +45,9 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   private val ssc = jobScheduler.ssc
   private val conf = ssc.conf
   private val graph = ssc.graph
+  private val clock = ssc.clock
 
-  val clock = {
-    val clockClass = ssc.sc.conf.get(
-      "spark.streaming.clock", "org.apache.spark.util.SystemClock")
-    try {
-      Utils.classForName(clockClass).newInstance().asInstanceOf[Clock]
-    } catch {
-      case e: ClassNotFoundException if clockClass.startsWith("org.apache.spark.streaming") =>
-        val newClockClass = clockClass.replace("org.apache.spark.streaming", "org.apache.spark")
-        Utils.classForName(newClockClass).newInstance().asInstanceOf[Clock]
-    }
-  }
-
-  private val timer = new RecurringTimer(clock, ssc.graph.batchDuration.milliseconds,
-    longTime => eventLoop.post(GenerateJobs(new Time(longTime))), "JobGenerator")
+  val eventBus: EventListenerBus = new EventListenerBus
 
   // This is marked lazy so that this is initialized after checkpoint duration has been set
   // in the context and the generator has been started.
@@ -72,6 +62,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   // eventLoop is created when generator starts.
   // This not being null means the scheduler has been started and not stopped
   private var eventLoop: EventLoop[JobGeneratorEvent] = null
+  private val remainingEventsCount = new AtomicLong(0)
 
   // last batch whose completion,checkpointing and metadata cleanup has been completed
   private var lastProcessedBatch: Time = null
@@ -93,6 +84,12 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
     eventLoop.start()
 
+    eventBus.addListener(new EventListener {
+      override def onEvent(event: Event) = {
+        eventLoop.post(GenerateJobs(event))
+      }
+    })
+
     if (ssc.isCheckpointPresent) {
       restart()
     } else {
@@ -102,7 +99,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
 
   /**
    * Stop generation of jobs. processReceivedData = true makes this wait until jobs
-   * of current ongoing time interval has been generated, processed and corresponding
+   * of current ongoing event interval has been generated, processed and corresponding
    * checkpoints written.
    */
   def stop(processReceivedData: Boolean): Unit = synchronized {
@@ -119,7 +116,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       def hasTimedOut: Boolean = {
         val timedOut = (System.currentTimeMillis() - timeWhenStopStarted) > stopTimeoutMs
         if (timedOut) {
-          logWarning("Timed out while stopping the job generator (timeout = " + stopTimeoutMs + ")")
+          logWarning(s"Timed out while stopping the job generator (timeout = $stopTimeoutMs)")
         }
         timedOut
       }
@@ -132,14 +129,15 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       }
       logInfo("Waited for all received blocks to be consumed for job generation")
 
-      // Stop generating jobs
-      val stopTime = timer.stop(interruptTimer = false)
+      // Stop graph
       graph.stop()
-      logInfo("Stopped generation timer")
+      //val stopTime = clock.getTimeMillis()
+      logInfo("Stopped graph")
 
       // Wait for the jobs to complete and checkpoints to be written
       def haveAllBatchesBeenProcessed: Boolean = {
-        lastProcessedBatch != null && lastProcessedBatch.milliseconds == stopTime
+        //lastProcessedBatch != null && lastProcessedBatch.milliseconds == stopTime
+        remainingEventsCount.get == 0
       }
       logInfo("Waiting for jobs to be processed and checkpoints to be written")
       while (!hasTimedOut && !haveAllBatchesBeenProcessed) {
@@ -148,8 +146,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       logInfo("Waited for jobs to be processed and checkpoints to be written")
     } else {
       logInfo("Stopping JobGenerator immediately")
-      // Stop timer and graph immediately, ignore unprocessed data and pending jobs
-      timer.stop(true)
+      // Stop graph immediately, ignore unprocessed data and pending jobs
       graph.stop()
     }
 
@@ -162,24 +159,24 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /**
    * Callback called when a batch has been completely processed.
    */
-  def onBatchCompletion(time: Time) {
-    eventLoop.post(ClearMetadata(time))
+  def onBatchCompletion(event: Event) {
+    eventLoop.post(ClearMetadata(event))
   }
 
   /**
    * Callback called when the checkpoint of a batch has been written.
    */
-  def onCheckpointCompletion(time: Time, clearCheckpointDataLater: Boolean) {
+  def onCheckpointCompletion(event: Event, clearCheckpointDataLater: Boolean) {
     if (clearCheckpointDataLater) {
-      eventLoop.post(ClearCheckpointData(time))
+      eventLoop.post(ClearCheckpointData(event))
     }
   }
 
   /** Processes all events */
-  private def processEvent(event: JobGeneratorEvent) {
-    logDebug("Got event " + event)
-    event match {
-      case GenerateJobs(time) => generateJobs(time)
+  private def processEvent(jobGeneratorEvent: JobGeneratorEvent) {
+    logDebug("Got event " + jobGeneratorEvent)
+    jobGeneratorEvent match {
+      case GenerateJobs(event) => generateJobs(event)
       case ClearMetadata(time) => clearMetadata(time)
       case DoCheckpoint(time, clearCheckpointDataLater) =>
         doCheckpoint(time, clearCheckpointDataLater)
@@ -187,116 +184,133 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
   }
 
-  /** Starts the generator for the first time */
+  /** Starts the generator for the first event */
   private def startFirstTime() {
-    val startTime = new Time(timer.getStartTime())
+    val startTime = Time(clock.getTimeMillis())
     graph.start(startTime - graph.batchDuration)
-    timer.start(startTime.milliseconds)
     logInfo("Started JobGenerator at " + startTime)
   }
 
   /** Restarts the generator based on the information in checkpoint */
   private def restart() {
     // If manual clock is being used for testing, then
-    // either set the manual clock to the last checkpointed time,
-    // or if the property is defined set it to that time
-    if (clock.isInstanceOf[ManualClock]) {
-      val lastTime = ssc.initialCheckpoint.checkpointTime.milliseconds
-      val jumpTime = ssc.sc.conf.getLong("spark.streaming.manualClock.jump", 0)
-      clock.asInstanceOf[ManualClock].setTime(lastTime + jumpTime)
+    // either set the manual clock to the last checkpointed event,
+    // or if the property is defined set it to that event
+    clock match {
+      case manualClock: ManualClock =>
+        val lastTime = ssc.initialCheckpoint.checkpointEvent.time.milliseconds
+        val jumpTime = ssc.sc.conf.getLong("spark.streaming.manualClock.jump", 0)
+        manualClock.setTime(lastTime + jumpTime)
+      case _ =>
     }
 
-    val batchDuration = ssc.graph.batchDuration
-
     // Batches when the master was down, that is,
-    // between the checkpoint and current restart time
-    val checkpointTime = ssc.initialCheckpoint.checkpointTime
-    val restartTime = new Time(timer.getRestartTime(graph.zeroTime.milliseconds))
-    val downTimes = checkpointTime.until(restartTime, batchDuration)
-    logInfo("Batches during down time (" + downTimes.size + " batches): "
-      + downTimes.mkString(", "))
+    // between the checkpoint and current restart event
+    val checkpointTime = ssc.initialCheckpoint.checkpointEvent.time
+    val restartTime = Time(clock.getTimeMillis())
+    val downTimeEvents = graph.eventSources.toSeq
+      .flatMap(_.between(checkpointTime, restartTime))
+      .sorted(Event.ordering)
+    logInfo("Batches during down time (" + downTimeEvents.size + " batches): ("
+      + downTimeEvents.mkString("), (") + ")")
 
     // Batches that were unprocessed before failure
-    val pendingTimes = ssc.initialCheckpoint.pendingTimes.sorted(Time.ordering)
-    logInfo("Batches pending processing (" + pendingTimes.length + " batches): " +
-      pendingTimes.mkString(", "))
+    val pendingEvents = ssc.initialCheckpoint.pendingEvents.sorted(Event.ordering)
+    logInfo("Batches pending processing (" + pendingEvents.length + " batches): (" +
+      pendingEvents.mkString("), (") + ")")
+
     // Reschedule jobs for these times
-    val timesToReschedule = (pendingTimes ++ downTimes).filter { _ < restartTime }
-      .distinct.sorted(Time.ordering)
-    logInfo("Batches to reschedule (" + timesToReschedule.length + " batches): " +
-      timesToReschedule.mkString(", "))
-    timesToReschedule.foreach { time =>
+    val eventsToReschedule = (pendingEvents ++ downTimeEvents)
+      .filter { _.time < restartTime }
+      .distinct.sorted(Event.ordering)
+    logInfo("Batches to reschedule (" + eventsToReschedule.length + " batches): (" +
+      eventsToReschedule.mkString("), (") + ")")
+
+    eventsToReschedule.foreach { event =>
       // Allocate the related blocks when recovering from failure, because some blocks that were
       // added but not allocated, are dangling in the queue after recovering, we have to allocate
       // those blocks to the next batch, which is the batch they were supposed to go.
-      jobScheduler.receiverTracker.allocateBlocksToBatch(time) // allocate received blocks to batch
-      jobScheduler.submitJobSet(JobSet(time, graph.generateJobs(time)))
+      graph.getInputStreams().filter(_.boundEventSources.contains(event.eventSource)).map(_.id)
+        // allocate received blocks to batch
+        .foreach(jobScheduler.receiverTracker.allocateBlocksToBatchAndStream(event, _))
+
+      jobScheduler.submitJobSet(JobSet(event, graph.generateJobs(event)))
     }
 
-    // Restart the timer
-    timer.start(restartTime.milliseconds)
+    // Restart the graph
+    graph.restart(restartTime)
     logInfo("Restarted JobGenerator at " + restartTime)
   }
 
-  /** Generate jobs and perform checkpointing for the given `time`.  */
-  private def generateJobs(time: Time) {
+  /** Generate jobs and perform checkpoint for the given `event`.  */
+  private def generateJobs(event: Event) {
+    remainingEventsCount.incrementAndGet()
     // Checkpoint all RDDs marked for checkpointing to ensure their lineages are
     // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
     ssc.sparkContext.setLocalProperty(RDD.CHECKPOINT_ALL_MARKED_ANCESTORS, "true")
     Try {
-      jobScheduler.receiverTracker.allocateBlocksToBatch(time) // allocate received blocks to batch
-      graph.generateJobs(time) // generate jobs using allocated block
+      //TODO: This is now done by each receiver input dstream generateJob method
+      //// allocate received blocks to batch
+      //graph.getBoundStreams(event.eventSource)
+      //  .filter(_.isInstanceOf[ReceiverInputDStream[_]])
+      //  .map(_.asInstanceOf[ReceiverInputDStream[_]].id)
+      //  .foreach(jobScheduler.receiverTracker.allocateBlocksToBatch(event, _))
+      graph.generateJobs(event) // generate jobs using allocated block
     } match {
       case Success(jobs) =>
-        val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(time)
-        jobScheduler.submitJobSet(JobSet(time, jobs, streamIdToInputInfos))
+        val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(event)
+        jobScheduler.submitJobSet(JobSet(event, jobs, streamIdToInputInfos))
       case Failure(e) =>
-        jobScheduler.reportError("Error generating jobs for time " + time, e)
+        jobScheduler.reportError(s"Error generating jobs for event $event", e)
     }
-    eventLoop.post(DoCheckpoint(time, clearCheckpointDataLater = false))
+    eventLoop.post(DoCheckpoint(event, clearCheckpointDataLater = false))
   }
 
-  /** Clear DStream metadata for the given `time`. */
-  private def clearMetadata(time: Time) {
-    ssc.graph.clearMetadata(time)
+  /** Clear DStream metadata for the given `event`. */
+  private def clearMetadata(event: Event) {
+    ssc.graph.clearMetadata(event)
 
     // If checkpointing is enabled, then checkpoint,
     // else mark batch to be fully processed
     if (shouldCheckpoint) {
-      eventLoop.post(DoCheckpoint(time, clearCheckpointDataLater = true))
+      eventLoop.post(DoCheckpoint(event, clearCheckpointDataLater = true))
     } else {
       // If checkpointing is not enabled, then delete metadata information about
       // received blocks (block data not saved in any case). Otherwise, wait for
       // checkpointing of this batch to complete.
       val maxRememberDuration = graph.getMaxInputStreamRememberDuration()
-      jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(time - maxRememberDuration)
-      jobScheduler.inputInfoTracker.cleanup(time - maxRememberDuration)
-      markBatchFullyProcessed(time)
+      jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
+      jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+      markBatchFullyProcessed(event)
     }
   }
 
-  /** Clear DStream checkpoint data for the given `time`. */
-  private def clearCheckpointData(time: Time) {
-    ssc.graph.clearCheckpointData(time)
+  /** Clear DStream checkpoint data for the given `event`. */
+  private def clearCheckpointData(event: Event) {
+    ssc.graph.clearCheckpointData(event)
 
     // All the checkpoint information about which batches have been processed, etc have
     // been saved to checkpoints, so its safe to delete block metadata and data WAL files
     val maxRememberDuration = graph.getMaxInputStreamRememberDuration()
-    jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(time - maxRememberDuration)
-    jobScheduler.inputInfoTracker.cleanup(time - maxRememberDuration)
-    markBatchFullyProcessed(time)
+    jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
+    jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+    markBatchFullyProcessed(event)
   }
 
-  /** Perform checkpoint for the give `time`. */
-  private def doCheckpoint(time: Time, clearCheckpointDataLater: Boolean) {
-    if (shouldCheckpoint && (time - graph.zeroTime).isMultipleOf(ssc.checkpointDuration)) {
-      logInfo("Checkpointing graph for time " + time)
-      ssc.graph.updateCheckpointData(time)
-      checkpointWriter.write(new Checkpoint(ssc, time), clearCheckpointDataLater)
+  /** Perform checkpoint for the give `event`. */
+  private def doCheckpoint(event: Event, clearCheckpointDataLater: Boolean) {
+    if (shouldCheckpoint && (event.time - graph.zeroTime).isMultipleOf(ssc.checkpointDuration)) {
+      logInfo("Checkpointing graph for event " + event)
+      ssc.graph.updateCheckpointData(event)
+      checkpointWriter.write(new Checkpoint(ssc, event), clearCheckpointDataLater)
+    } else if (clearCheckpointDataLater) {
+      //TODO: validate this condition and raise an issue
+      markBatchFullyProcessed(event)
     }
   }
 
-  private def markBatchFullyProcessed(time: Time) {
-    lastProcessedBatch = time
+  private def markBatchFullyProcessed(event: Event) {
+    lastProcessedBatch = event.time
+    remainingEventsCount.decrementAndGet()
   }
 }
