@@ -19,11 +19,12 @@ package org.apache.spark.streaming.dstream
 
 import java.io.{NotSerializableException, ObjectInputStream, ObjectOutputStream}
 
+import org.apache.spark.rdd.{RDD, UnionRDD}
+import org.apache.spark.streaming.StreamingContext
+import org.apache.spark.streaming.event.Event
+
 import scala.collection.mutable.{ArrayBuffer, Queue}
 import scala.reflect.ClassTag
-
-import org.apache.spark.rdd.{RDD, UnionRDD}
-import org.apache.spark.streaming.{StreamingContext, Time}
 
 private[streaming]
 class QueueInputDStream[T: ClassTag](
@@ -46,7 +47,7 @@ class QueueInputDStream[T: ClassTag](
     logWarning("queueStream doesn't support checkpointing")
   }
 
-  override def compute(validTime: Time): Option[RDD[T]] = {
+  override def compute(event: Event): Option[RDD[T]] = {
     val buffer = new ArrayBuffer[RDD[T]]()
     queue.synchronized {
       if (oneAtATime && queue.nonEmpty) {
