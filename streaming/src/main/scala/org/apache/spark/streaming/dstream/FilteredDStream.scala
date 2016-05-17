@@ -17,10 +17,11 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+
+import scala.reflect.ClassTag
 
 private[streaming]
 class FilteredDStream[T: ClassTag](
@@ -28,12 +29,13 @@ class FilteredDStream[T: ClassTag](
     filterFunc: T => Boolean
   ) extends DStream[T](parent.ssc) {
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  override def dependencies: List[Dependency[_]] = List(new EventDependency[T](parent))
 
   override def slideDuration: Duration = parent.slideDuration
 
-  override def compute(validTime: Time): Option[RDD[T]] = {
-    parent.getOrCompute(validTime).map(_.filter(filterFunc))
+  override def compute(event: Event): Option[RDD[T]] = {
+    dependencies.flatMap(_.rdds(event)).headOption
+      .map(_.asInstanceOf[RDD[T]].filter(filterFunc))
   }
 }
 
