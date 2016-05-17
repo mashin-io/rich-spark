@@ -111,10 +111,9 @@ private[streaming] class ReceivedBlockTracker(
   def allocateBlocksToBatchAndStream(batchEvent: Event, streamId: Int): Unit = synchronized {
     if (lastAllocatedBatch == null || (batchEvent.instanceId, streamId) != lastAllocatedBatch) {
       val unallocatedBlocks = getReceivedBlockQueue(streamId).dequeueAll(x => true)
-      val allocatedBlocks = streamIdToAllocatedBlocks.getOrElse(streamId, new AllocatedBlocks)
-      allocatedBlocks.put(batchEvent, unallocatedBlocks)
+      val allocatedBlocks = streamIdToAllocatedBlocks.getOrElseUpdate(streamId, new AllocatedBlocks)
       if (writeToLog(BatchAllocationEvent(streamId, batchEvent, unallocatedBlocks))) {
-        streamIdToAllocatedBlocks.put(streamId, allocatedBlocks)
+        allocatedBlocks.put(batchEvent, unallocatedBlocks)
         lastAllocatedBatch = (batchEvent.instanceId, streamId)
       } else {
         logInfo(s"Possibly processed batch ($batchEvent, stream:$streamId)" +
