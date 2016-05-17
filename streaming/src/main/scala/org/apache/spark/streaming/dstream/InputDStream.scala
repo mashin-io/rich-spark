@@ -21,7 +21,7 @@ import scala.reflect.ClassTag
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDDOperationScope
-import org.apache.spark.streaming.{Duration, StreamingContext, Time}
+import org.apache.spark.streaming.{Dependency, Duration, StreamingContext, Time}
 import org.apache.spark.streaming.scheduler.RateController
 import org.apache.spark.util.Utils
 
@@ -98,7 +98,7 @@ abstract class InputDStream[T: ClassTag](_ssc: StreamingContext)
     }
   }
 
-  override def dependencies: List[DStream[_]] = List()
+  override def dependencies: List[Dependency[_]] = List()
 
   override def slideDuration: Duration = {
     if (ssc == null) throw new Exception("ssc is null")
