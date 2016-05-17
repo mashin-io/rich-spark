@@ -17,11 +17,12 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+
+import scala.reflect.ClassTag
 
 private[streaming]
 class ShuffledDStream[K: ClassTag, V: ClassTag, C: ClassTag](
@@ -33,12 +34,13 @@ class ShuffledDStream[K: ClassTag, V: ClassTag, C: ClassTag](
     mapSideCombine: Boolean = true
   ) extends DStream[(K, C)] (parent.ssc) {
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  override def dependencies: List[Dependency[_]] = List(new EventDependency[(K, V)](parent))
 
   override def slideDuration: Duration = parent.slideDuration
 
-  override def compute(validTime: Time): Option[RDD[(K, C)]] = {
-    parent.getOrCompute(validTime) match {
+  override def compute(event: Event): Option[RDD[(K, C)]] = {
+    dependencies.flatMap(_.rdds(event)).headOption
+      .map(_.asInstanceOf[RDD[(K, V)]]) match {
       case Some(rdd) => Some(rdd.combineByKey[C](
           createCombiner, mergeValue, mergeCombiner, partitioner, mapSideCombine))
       case None => None
