@@ -17,6 +17,7 @@
 
 package org.apache.spark.streaming.scheduler
 
+import java.util.Properties
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
 import scala.collection.JavaConverters._
@@ -27,7 +28,7 @@ import org.apache.commons.lang3.SerializationUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.{PairRDDFunctions, RDD}
 import org.apache.spark.streaming._
-import org.apache.spark.streaming.ui.UIUtils
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.util.{EventLoop, ThreadUtils}
 
 
@@ -45,12 +46,13 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
 
   // Use of ConcurrentHashMap.keySet later causes an odd runtime problem due to Java 7/8 diff
   // https://gist.github.com/AlainODea/1375759b8720a3f9f094
-  private val jobSets: java.util.Map[Time, JobSet] = new ConcurrentHashMap[Time, JobSet]
+  private val jobSets: java.util.Map[Event, JobSet] = new ConcurrentHashMap[Event, JobSet]
   private val numConcurrentJobs = ssc.conf.getInt("spark.streaming.concurrentJobs", 1)
   private val jobExecutor =
     ThreadUtils.newDaemonFixedThreadPool(numConcurrentJobs, "streaming-job-executor")
-  private val jobGenerator = new JobGenerator(this)
-  val clock = jobGenerator.clock
+  val jobGenerator = new JobGenerator(this)
+
+  val clock = ssc.clock
   val listenerBus = new StreamingListenerBus(ssc.sparkContext.listenerBus)
 
   // These two are created only when scheduler starts.
@@ -93,6 +95,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     receiverTracker.start()
     jobGenerator.start()
     executorAllocationManager.foreach(_.start())
+
     logInfo("Started JobScheduler")
   }
 
@@ -137,16 +140,16 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
 
   def submitJobSet(jobSet: JobSet) {
     if (jobSet.jobs.isEmpty) {
-      logInfo("No jobs added for time " + jobSet.time)
+      logInfo(s"No jobs added for event ${jobSet.event}")
     } else {
       listenerBus.post(StreamingListenerBatchSubmitted(jobSet.toBatchInfo))
-      jobSets.put(jobSet.time, jobSet)
+      jobSets.put(jobSet.event, jobSet)
       jobSet.jobs.foreach(job => jobExecutor.execute(new JobHandler(job)))
-      logInfo("Added jobs for time " + jobSet.time)
+      logInfo(s"Added jobs for event ${jobSet.event}")
     }
   }
 
-  def getPendingTimes(): Seq[Time] = {
+  def getPendingEvents(): Seq[Event] = {
     jobSets.asScala.keys.toSeq
   }
 
@@ -172,7 +175,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
   }
 
   private def handleJobStart(job: Job, startTime: Long) {
-    val jobSet = jobSets.get(job.time)
+    val jobSet = jobSets.get(job.event)
     val isFirstJobOfJobSet = !jobSet.hasStarted
     jobSet.handleJobStart(job)
     if (isFirstJobOfJobSet) {
@@ -182,20 +185,20 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     }
     job.setStartTime(startTime)
     listenerBus.post(StreamingListenerOutputOperationStarted(job.toOutputOperationInfo))
-    logInfo("Starting job " + job.id + " from job set of time " + jobSet.time)
+    logInfo(s"Starting job ${job.id} from job set of event ${jobSet.event}")
   }
 
   private def handleJobCompletion(job: Job, completedTime: Long) {
-    val jobSet = jobSets.get(job.time)
+    val jobSet = jobSets.get(job.event)
     jobSet.handleJobCompletion(job)
     job.setEndTime(completedTime)
     listenerBus.post(StreamingListenerOutputOperationCompleted(job.toOutputOperationInfo))
-    logInfo("Finished job " + job.id + " from job set of time " + jobSet.time)
+    logInfo(s"Finished job ${job.id} from job set of event ${jobSet.event}")
     if (jobSet.hasCompleted) {
-      jobSets.remove(jobSet.time)
-      jobGenerator.onBatchCompletion(jobSet.time)
-      logInfo("Total delay: %.3f s for time %s (execution: %.3f s)".format(
-        jobSet.totalDelay / 1000.0, jobSet.time.toString,
+      jobSets.remove(jobSet.event)
+      jobGenerator.onBatchCompletion(jobSet.event)
+      logInfo("Total delay: %.3f s for event %s (execution: %.3f s)".format(
+        jobSet.totalDelay / 1000.0, jobSet.event.toString,
         jobSet.processingDelay / 1000.0
       ))
       listenerBus.post(StreamingListenerBatchCompleted(jobSet.toBatchInfo))
@@ -218,15 +221,17 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     def run() {
       val oldProps = ssc.sparkContext.getLocalProperties
       try {
-        ssc.sparkContext.setLocalProperties(SerializationUtils.clone(ssc.savedProperties.get()))
-        val formattedTime = UIUtils.formatBatchTime(
-          job.time.milliseconds, ssc.graph.batchDuration.milliseconds, showYYYYMMSS = false)
-        val batchUrl = s"/streaming/batch/?id=${job.time.milliseconds}"
-        val batchLinkText = s"[output operation ${job.outputOpId}, batch time ${formattedTime}]"
+        ssc.sparkContext.setLocalProperties(
+          SerializationUtils.clone(ssc.savedProperties.get()).asInstanceOf[Properties])
+        //val formattedTime = UIUtils.formatBatchTime(
+        //  job.time.milliseconds, ssc.graph.batchDuration.milliseconds, showYYYYMMSS = false)
+        val formattedEvent = job.event.toString
+        val batchUrl = s"/streaming/batch/?id=${job.event.instanceId}"
+        val batchLinkText = s"[output operation ${job.outputOpId}, batch event $formattedEvent]"
 
         ssc.sc.setJobDescription(
           s"""Streaming job from <a href="$batchUrl">$batchLinkText</a>""")
-        ssc.sc.setLocalProperty(BATCH_TIME_PROPERTY_KEY, job.time.milliseconds.toString)
+        ssc.sc.setLocalProperty(BATCH_EVENT_PROPERTY_KEY, job.event.instanceId.toString)
         ssc.sc.setLocalProperty(OUTPUT_OP_ID_PROPERTY_KEY, job.outputOpId.toString)
         // Checkpoint all RDDs marked for checkpointing to ensure their lineages are
         // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
@@ -259,6 +264,6 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
 }
 
 private[streaming] object JobScheduler {
-  val BATCH_TIME_PROPERTY_KEY = "spark.streaming.internal.batchTime"
+  val BATCH_EVENT_PROPERTY_KEY = "spark.streaming.internal.batchEvent"
   val OUTPUT_OP_ID_PROPERTY_KEY = "spark.streaming.internal.outputOpId"
 }
