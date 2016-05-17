@@ -24,7 +24,7 @@ import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.rdd.WriteAheadLogBackedBlockRDD
 import org.apache.spark.streaming.receiver.Receiver
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
-import org.apache.spark.streaming.scheduler.{Job, RateController, ReceivedBlockInfo, StreamInputInfo}
+import org.apache.spark.streaming.scheduler.{RateController, ReceivedBlockInfo, StreamInputInfo}
 import org.apache.spark.streaming.util.WriteAheadLogUtils
 
 import scala.reflect.ClassTag
@@ -66,27 +66,28 @@ abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
 
   def stop() {}
 
-  override def generateJob(event: Event): Option[Job] = {
-    // allocate received blocks to batch
-    val receiverTracker = ssc.scheduler.receiverTracker
-    receiverTracker.allocateBlocksToBatch(event, id)
-    None
-  }
+  //override def generateJob(event: Event): Option[Job] = {
+  //  // allocate received blocks to batch
+  //  val receiverTracker = ssc.scheduler.receiverTracker
+  //  receiverTracker.allocateBlocksToBatchAndStream(event, id)
+  //  None
+  //}
 
   /**
    * Generates RDDs with blocks received by the receiver of this stream. */
   override def compute(event: Event): Option[RDD[T]] = {
     val blockRDD = {
-
       if (event.time < graph.startTime) {
         // If this is called for any time before the start time of the context,
         // then this returns an empty RDD. This may happen when recovering from a
         // driver failure without any write ahead log to recover pre-failure data.
         new BlockRDD[T](ssc.sc, Array.empty)
       } else {
-        // Otherwise, ask the tracker for all the blocks that have been allocated to this stream
-        // for this batch
+        // Otherwise,
         val receiverTracker = ssc.scheduler.receiverTracker
+        // allocate received blocks to a batch with the received event and to this stream
+        receiverTracker.allocateBlocksToBatchAndStream(event, id)
+        // ask the tracker for all the blocks that have been allocated
         val blockInfos = receiverTracker.getBlocksOfBatchAndStream(event, id)
 
         // Register the input blocks information into InputInfoTracker
