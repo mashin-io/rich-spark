@@ -8,13 +8,15 @@ import org.apache.spark.streaming.event.Event
 import scala.reflect.ClassTag
 
 abstract class Dependency[T: ClassTag](val stream: DStream[T]) {
-  def rdd(event: Event): Option[RDD[T]]
+  def rdds(event: Event): Seq[RDD[T]]
 }
 
 class EventDependency[T: ClassTag](
     override val stream: DStream[T]
   ) extends Dependency[T](stream) {
-  override def rdd(event: Event): Option[RDD[T]] = stream.getOrCompute(event)
+  override def rdds(event: Event): Seq[RDD[T]] = {
+    stream.getOrCompute(event).map(Seq[RDD[T]](_)).getOrElse(Seq[RDD[T]]())
+  }
 }
 
 class TailDependency[T: ClassTag](
@@ -22,12 +24,11 @@ class TailDependency[T: ClassTag](
     val skip: Int,
     val size: Int
   ) extends Dependency[T](stream) {
-  override def rdd(event: Event): Option[RDD[T]] = {
+  override def rdds(event: Event): Seq[RDD[T]] = {
     if (event != null) {
       stream.getOrCompute(event)
     }
-    val tailRDDs = stream.generatedRDDs.values
-      .dropRight(skip).takeRight(size)
-    Some(stream.ssc.sc.union(tailRDDs.toSeq))
+    stream.generatedRDDs.values.dropRight(skip).takeRight(size).toSeq
+    //Some(stream.ssc.sc.union(tailRDDs.toSeq))
   }
 }
