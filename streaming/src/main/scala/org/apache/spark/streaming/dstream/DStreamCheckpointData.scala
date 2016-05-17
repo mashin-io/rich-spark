@@ -19,35 +19,34 @@ package org.apache.spark.streaming.dstream
 
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 
-import scala.collection.mutable.HashMap
-import scala.reflect.ClassTag
-
 import org.apache.hadoop.fs.{FileSystem, Path}
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.streaming.Time
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.util.Utils
+
+import scala.collection.mutable
+import scala.reflect.ClassTag
 
 private[streaming]
 class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
   extends Serializable with Logging {
-  protected val data = new HashMap[Time, AnyRef]()
+  protected val data = new mutable.HashMap[Event, AnyRef]()
 
   // Mapping of the batch time to the checkpointed RDD file of that time
-  @transient private var timeToCheckpointFile = new HashMap[Time, String]
+  @transient private var eventToCheckpointFile = new mutable.HashMap[Event, String]
   // Mapping of the batch time to the time of the oldest checkpointed RDD
   // in that batch's checkpoint data
-  @transient private var timeToOldestCheckpointFileTime = new HashMap[Time, Time]
+  @transient private var eventToOldestCheckpointFileEvent = new mutable.HashMap[Event, Event]
 
   @transient private var fileSystem: FileSystem = null
-  protected[streaming] def currentCheckpointFiles = data.asInstanceOf[HashMap[Time, String]]
+  protected[streaming] def currentCheckpointFiles = data.asInstanceOf[mutable.HashMap[Event, String]]
 
   /**
    * Updates the checkpoint data of the DStream. This gets called every time
    * the graph checkpoint is initiated. Default implementation records the
    * checkpoint files at which the generated RDDs of the DStream have been saved.
    */
-  def update(time: Time) {
+  def update(event: Event) {
 
     // Get the checkpointed RDDs from the generated RDDs
     val checkpointFiles = dstream.generatedRDDs.filter(_._2.getCheckpointFile.isDefined)
@@ -55,14 +54,14 @@ class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
     logDebug("Current checkpoint files:\n" + checkpointFiles.toSeq.mkString("\n"))
 
     // Add the checkpoint files to the data to be serialized
-    if (!checkpointFiles.isEmpty) {
+    if (checkpointFiles.nonEmpty) {
       currentCheckpointFiles.clear()
       currentCheckpointFiles ++= checkpointFiles
       // Add the current checkpoint files to the map of all checkpoint files
       // This will be used to delete old checkpoint files
-      timeToCheckpointFile ++= currentCheckpointFiles
+      eventToCheckpointFile ++= currentCheckpointFiles
       // Remember the time of the oldest checkpoint RDD in current state
-      timeToOldestCheckpointFileTime(time) = currentCheckpointFiles.keys.min(Time.ordering)
+      eventToOldestCheckpointFileEvent(event) = currentCheckpointFiles.keys.min(Event.ordering)
     }
   }
 
@@ -70,29 +69,29 @@ class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
    * Cleanup old checkpoint data. This gets called after a checkpoint of `time` has been
    * written to the checkpoint directory.
    */
-  def cleanup(time: Time) {
+  def cleanup(event: Event) {
     // Get the time of the oldest checkpointed RDD that was written as part of the
     // checkpoint of `time`
-    timeToOldestCheckpointFileTime.remove(time) match {
-      case Some(lastCheckpointFileTime) =>
-        // Find all the checkpointed RDDs (i.e. files) that are older than `lastCheckpointFileTime`
+    eventToOldestCheckpointFileEvent.remove(event) match {
+      case Some(lastCheckpointFileEvent) =>
+        // Find all the checkpointed RDDs (i.e. files) that are older than `lastCheckpointFileEvent`
         // This is because checkpointed RDDs older than this are not going to be needed
         // even after master fails, as the checkpoint data of `time` does not refer to those files
-        val filesToDelete = timeToCheckpointFile.filter(_._1 < lastCheckpointFileTime)
-        logDebug("Files to delete:\n" + filesToDelete.mkString(","))
+        val filesToDelete = eventToCheckpointFile.filter(_._1.time < lastCheckpointFileEvent.time)
+        logDebug(s"Files to delete:\n ${filesToDelete.mkString(",")}")
         filesToDelete.foreach {
-          case (time, file) =>
+          case (oldEvent, file) =>
             try {
               val path = new Path(file)
               if (fileSystem == null) {
                 fileSystem = path.getFileSystem(dstream.ssc.sparkContext.hadoopConfiguration)
               }
               fileSystem.delete(path, true)
-              timeToCheckpointFile -= time
-              logInfo("Deleted checkpoint file '" + file + "' for time " + time)
+              eventToCheckpointFile -= oldEvent
+              logInfo(s"Deleted checkpoint file '$file' for event $oldEvent")
             } catch {
               case e: Exception =>
-                logWarning("Error deleting old checkpoint file '" + file + "' for time " + time, e)
+                logWarning(s"Error deleting old checkpoint file '$file' for event $oldEvent", e)
                 fileSystem = null
             }
         }
@@ -109,9 +108,9 @@ class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
   def restore() {
     // Create RDDs from the checkpoint data
     currentCheckpointFiles.foreach {
-      case(time, file) =>
-        logInfo("Restoring checkpointed RDD for time " + time + " from file '" + file + "'")
-        dstream.generatedRDDs += ((time, dstream.context.sparkContext.checkpointFile[T](file)))
+      case(event, file) =>
+        logInfo("Restoring checkpointed RDD for event " + event + " from file '" + file + "'")
+        dstream.generatedRDDs += ((event, dstream.context.sparkContext.checkpointFile[T](file)))
     }
   }
 
@@ -147,7 +146,7 @@ class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
   private def readObject(ois: ObjectInputStream): Unit = Utils.tryOrIOException {
     logDebug(this.getClass().getSimpleName + ".readObject used")
     ois.defaultReadObject()
-    timeToOldestCheckpointFileTime = new HashMap[Time, Time]
-    timeToCheckpointFile = new HashMap[Time, String]
+    eventToOldestCheckpointFileEvent = new mutable.HashMap[Event, Event]
+    eventToCheckpointFile = new mutable.HashMap[Event, String]
   }
 }
