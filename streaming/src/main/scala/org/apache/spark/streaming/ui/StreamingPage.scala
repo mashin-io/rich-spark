@@ -211,22 +211,22 @@ private[ui] class StreamingPage(parent: StreamingTab)
   private def generateStatTable(): Seq[Node] = {
     val batches = listener.retainedBatches
 
-    val batchTimes = batches.map(_.batchTime.milliseconds)
+    val batchTimes = batches.map(_.batchEvent.time.milliseconds)
     val minBatchTime = if (batchTimes.isEmpty) startTime else batchTimes.min
     val maxBatchTime = if (batchTimes.isEmpty) startTime else batchTimes.max
 
     val recordRateForAllStreams = new RecordRateUIData(batches.map { batchInfo =>
-      (batchInfo.batchTime.milliseconds, batchInfo.numRecords * 1000.0 / listener.batchDuration)
+      (batchInfo.batchEvent.instanceId, batchInfo.numRecords * 1000.0 / listener.batchDuration)
     })
 
     val schedulingDelay = new MillisecondsStatUIData(batches.flatMap { batchInfo =>
-      batchInfo.schedulingDelay.map(batchInfo.batchTime.milliseconds -> _)
+      batchInfo.schedulingDelay.map(batchInfo.batchEvent.instanceId -> _)
     })
     val processingTime = new MillisecondsStatUIData(batches.flatMap { batchInfo =>
-      batchInfo.processingDelay.map(batchInfo.batchTime.milliseconds -> _)
+      batchInfo.processingDelay.map(batchInfo.batchEvent.instanceId -> _)
     })
     val totalDelay = new MillisecondsStatUIData(batches.flatMap { batchInfo =>
-      batchInfo.totalDelay.map(batchInfo.batchTime.milliseconds -> _)
+      batchInfo.totalDelay.map(batchInfo.batchEvent.instanceId -> _)
     })
 
     // Use the max value of "schedulingDelay", "processingTime", and "totalDelay" to make the
@@ -483,10 +483,10 @@ private[ui] class StreamingPage(parent: StreamingTab)
   }
 
   private def generateBatchListTables(): Seq[Node] = {
-    val runningBatches = listener.runningBatches.sortBy(_.batchTime.milliseconds).reverse
-    val waitingBatches = listener.waitingBatches.sortBy(_.batchTime.milliseconds).reverse
+    val runningBatches = listener.runningBatches.sortBy(_.batchEvent.time.milliseconds).reverse
+    val waitingBatches = listener.waitingBatches.sortBy(_.batchEvent.time.milliseconds).reverse
     val completedBatches = listener.retainedCompletedBatches.
-      sortBy(_.batchTime.milliseconds).reverse
+      sortBy(_.batchEvent.time.milliseconds).reverse
 
     val activeBatchesContent = {
       <h4 id="active">Active Batches ({runningBatches.size + waitingBatches.size})</h4> ++

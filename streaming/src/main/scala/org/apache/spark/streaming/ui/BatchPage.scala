@@ -19,14 +19,12 @@ package org.apache.spark.streaming.ui
 
 import javax.servlet.http.HttpServletRequest
 
-import scala.xml._
-
 import org.apache.commons.lang3.StringEscapeUtils
-
-import org.apache.spark.streaming.Time
 import org.apache.spark.streaming.ui.StreamingJobProgressListener.SparkJobId
-import org.apache.spark.ui.{UIUtils => SparkUIUtils, WebUIPage}
 import org.apache.spark.ui.jobs.UIData.JobUIData
+import org.apache.spark.ui.{UIUtils => SparkUIUtils, WebUIPage}
+
+import scala.xml._
 
 private[ui] case class SparkJobIdWithUIData(sparkJobId: SparkJobId, jobUIData: Option[JobUIData])
 
@@ -304,14 +302,14 @@ private[ui] class BatchPage(parent: StreamingTab) extends WebUIPage("batch") {
   }
 
   def render(request: HttpServletRequest): Seq[Node] = streamingListener.synchronized {
-    val batchTime = Option(request.getParameter("id")).map(id => Time(id.toLong)).getOrElse {
+    val batchEventInstanceId = Option(request.getParameter("id")).map(_.toLong).getOrElse {
       throw new IllegalArgumentException(s"Missing id parameter")
     }
-    val formattedBatchTime =
-      UIUtils.formatBatchTime(batchTime.milliseconds, streamingListener.batchDuration)
+    //val formattedBatchTime =
+    //  UIUtils.formatBatchTime(batchEventInstanceId.milliseconds, streamingListener.batchDuration)
 
-    val batchUIData = streamingListener.getBatchUIData(batchTime).getOrElse {
-      throw new IllegalArgumentException(s"Batch $formattedBatchTime does not exist")
+    val batchUIData = streamingListener.getBatchUIData(batchEventInstanceId).getOrElse {
+      throw new IllegalArgumentException(s"Batch $batchEventInstanceId does not exist")
     }
 
     val formattedSchedulingDelay =
@@ -358,7 +356,7 @@ private[ui] class BatchPage(parent: StreamingTab) extends WebUIPage("batch") {
 
     val content = summary ++ generateJobTable(batchUIData)
 
-    SparkUIUtils.headerSparkPage(s"Details of batch at $formattedBatchTime", content, parent)
+    SparkUIUtils.headerSparkPage(s"Details of batch at $batchEventInstanceId", content, parent)
   }
 
   def generateInputMetadataTable(inputMetadatas: Seq[(Int, String)]): Seq[Node] = {

@@ -18,16 +18,16 @@
 
 package org.apache.spark.streaming.ui
 
-import scala.collection.mutable
-
-import org.apache.spark.streaming.Time
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.scheduler.{BatchInfo, OutputOperationInfo, StreamInputInfo}
 import org.apache.spark.streaming.ui.StreamingJobProgressListener._
+
+import scala.collection.mutable
 
 private[ui] case class OutputOpIdAndSparkJobId(outputOpId: OutputOpId, sparkJobId: SparkJobId)
 
 private[ui] case class BatchUIData(
-    val batchTime: Time,
+    val batchEvent: Event,
     val streamIdToInputInfo: Map[Int, StreamInputInfo],
     val submissionTime: Long,
     val processingStartTime: Option[Long],
@@ -67,7 +67,7 @@ private[ui] case class BatchUIData(
    * Update an output operation information of this batch.
    */
   def updateOutputOperationInfo(outputOperationInfo: OutputOperationInfo): Unit = {
-    assert(batchTime == outputOperationInfo.batchTime)
+    assert(batchEvent == outputOperationInfo.batchEvent)
     outputOperations(outputOperationInfo.id) = OutputOperationUIData(outputOperationInfo)
   }
 
@@ -100,7 +100,7 @@ private[ui] object BatchUIData {
     val outputOperations = mutable.HashMap[OutputOpId, OutputOperationUIData]()
     outputOperations ++= batchInfo.outputOperationInfos.mapValues(OutputOperationUIData.apply)
     new BatchUIData(
-      batchInfo.batchTime,
+      batchInfo.batchEvent,
       batchInfo.streamIdToInputInfo,
       batchInfo.submissionTime,
       batchInfo.processingStartTime,

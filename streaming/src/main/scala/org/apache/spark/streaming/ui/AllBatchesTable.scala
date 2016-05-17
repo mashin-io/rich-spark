@@ -50,19 +50,20 @@ private[ui] abstract class BatchTableBase(tableId: String, batchInterval: Long) 
   }
 
   protected def baseRow(batch: BatchUIData): Seq[Node] = {
-    val batchTime = batch.batchTime.milliseconds
-    val formattedBatchTime = UIUtils.formatBatchTime(batchTime, batchInterval)
+    val batchEvent = batch.batchEvent
+    //val formattedBatchEvent = UIUtils.formatBatchTime(batchEvent, batchInterval)
+    val formattedBatchEvent = batchEvent.toString
     val numRecords = batch.numRecords
     val schedulingDelay = batch.schedulingDelay
     val formattedSchedulingDelay = schedulingDelay.map(SparkUIUtils.formatDuration).getOrElse("-")
     val processingTime = batch.processingDelay
     val formattedProcessingTime = processingTime.map(SparkUIUtils.formatDuration).getOrElse("-")
-    val batchTimeId = s"batch-$batchTime"
+    val batchEventId = s"batch-${batchEvent.instanceId}"
 
-    <td id={batchTimeId} sorttable_customkey={batchTime.toString}
+    <td id={batchEventId} sorttable_customkey={batchEvent.toString}
         isFailed={batch.isFailed.toString}>
-      <a href={s"batch?id=$batchTime"}>
-        {formattedBatchTime}
+      <a href={s"batch?id=${batchEvent.instanceId}"}>
+        {formattedBatchEvent}
       </a>
     </td>
       <td sorttable_customkey={numRecords.toString}>{numRecords.toString} records</td>
