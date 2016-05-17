@@ -19,17 +19,17 @@ package org.apache.spark.streaming.dstream
 
 import java.io.{IOException, ObjectInputStream}
 
-import scala.collection.mutable
-import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path, PathFilter}
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat}
-
 import org.apache.spark.rdd.{RDD, UnionRDD}
 import org.apache.spark.streaming._
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.scheduler.StreamInputInfo
 import org.apache.spark.util.{SerializableConfiguration, TimeStampedHashMap, Utils}
+
+import scala.collection.mutable
+import scala.reflect.ClassTag
 
 /**
  * This class represents an input stream that monitors a Hadoop-compatible filesystem for new
@@ -116,8 +116,8 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
 
   // Map of batch-time to selected file info for the remembered batches
   // This is a concurrent map because it's also accessed in unit tests
-  @transient private[streaming] var batchTimeToSelectedFiles =
-    new mutable.HashMap[Time, Array[String]]
+  @transient private[streaming] var batchEventToSelectedFiles =
+    new mutable.HashMap[Event, Array[String]]
 
   // Set of files that were selected in the remembered batches
   @transient private var recentlySelectedFiles = new mutable.HashSet[String]()
@@ -144,12 +144,12 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
    * latest modification time in the previous call to this method yet was not reported in
    * the previous call.
    */
-  override def compute(validTime: Time): Option[RDD[(K, V)]] = {
+  override def compute(event: Event): Option[RDD[(K, V)]] = {
     // Find new files
-    val newFiles = findNewFiles(validTime.milliseconds)
-    logInfo("New files at time " + validTime + ":\n" + newFiles.mkString("\n"))
-    batchTimeToSelectedFiles.synchronized {
-      batchTimeToSelectedFiles += ((validTime, newFiles))
+    val newFiles = findNewFiles(event.time.milliseconds)
+    logInfo("New files at time " + event + ":\n" + newFiles.mkString("\n"))
+    batchEventToSelectedFiles.synchronized {
+      batchEventToSelectedFiles += ((event, newFiles))
     }
     recentlySelectedFiles ++= newFiles
     val rdds = Some(filesToRDD(newFiles))
@@ -158,18 +158,18 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
       "files" -> newFiles.toList,
       StreamInputInfo.METADATA_KEY_DESCRIPTION -> newFiles.mkString("\n"))
     val inputInfo = StreamInputInfo(id, 0, metadata)
-    ssc.scheduler.inputInfoTracker.reportInfo(validTime, inputInfo)
+    ssc.scheduler.inputInfoTracker.reportInfo(event, inputInfo)
     rdds
   }
 
   /** Clear the old time-to-files mappings along with old RDDs */
-  protected[streaming] override def clearMetadata(time: Time) {
-    batchTimeToSelectedFiles.synchronized {
-      val oldFiles = batchTimeToSelectedFiles.filter(_._1 < (time - rememberDuration))
-      batchTimeToSelectedFiles --= oldFiles.keys
+  protected[streaming] override def clearMetadata(event: Event) {
+    batchEventToSelectedFiles.synchronized {
+      val oldFiles = batchEventToSelectedFiles.filter(_._1.time < (event.time - rememberDuration))
+      batchEventToSelectedFiles --= oldFiles.keys
       recentlySelectedFiles --= oldFiles.values.flatten
       logInfo("Cleared " + oldFiles.size + " old files that were older than " +
-        (time - rememberDuration) + ": " + oldFiles.keys.mkString(", "))
+        (event.time - rememberDuration) + ": " + oldFiles.keys.mkString(", "))
       logDebug("Cleared files are:\n" +
         oldFiles.map(p => (p._1, p._2.mkString(", "))).mkString("\n"))
     }
@@ -315,8 +315,8 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
   private def readObject(ois: ObjectInputStream): Unit = Utils.tryOrIOException {
     logDebug(this.getClass().getSimpleName + ".readObject used")
     ois.defaultReadObject()
-    generatedRDDs = new mutable.HashMap[Time, RDD[(K, V)]]()
-    batchTimeToSelectedFiles = new mutable.HashMap[Time, Array[String]]
+    generatedRDDs = new mutable.LinkedHashMap[Event, RDD[(K, V)]]()
+    batchEventToSelectedFiles = new mutable.HashMap[Event, Array[String]]
     recentlySelectedFiles = new mutable.HashSet[String]()
     fileToModTime = new TimeStampedHashMap[String, Long](true)
   }
@@ -328,24 +328,24 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
   private[streaming]
   class FileInputDStreamCheckpointData extends DStreamCheckpointData(this) {
 
-    private def hadoopFiles = data.asInstanceOf[mutable.HashMap[Time, Array[String]]]
+    private def hadoopFiles = data.asInstanceOf[mutable.HashMap[Event, Array[String]]]
 
-    override def update(time: Time) {
+    override def update(event: Event) {
       hadoopFiles.clear()
-      batchTimeToSelectedFiles.synchronized { hadoopFiles ++= batchTimeToSelectedFiles }
+      batchEventToSelectedFiles.synchronized { hadoopFiles ++= batchEventToSelectedFiles }
     }
 
-    override def cleanup(time: Time) { }
+    override def cleanup(event: Event) { }
 
     override def restore() {
-      hadoopFiles.toSeq.sortBy(_._1)(Time.ordering).foreach {
-        case (t, f) =>
+      hadoopFiles.toSeq.sortBy(_._1)(Event.ordering).foreach {
+        case (e, f) =>
           // Restore the metadata in both files and generatedRDDs
-          logInfo("Restoring files for time " + t + " - " +
+          logInfo("Restoring files for time " + e + " - " +
             f.mkString("[", ", ", "]") )
-          batchTimeToSelectedFiles.synchronized { batchTimeToSelectedFiles += ((t, f)) }
+          batchEventToSelectedFiles.synchronized { batchEventToSelectedFiles += ((e, f)) }
           recentlySelectedFiles ++= f
-          generatedRDDs += ((t, filesToRDD(f)))
+          generatedRDDs += ((e, filesToRDD(f)))
       }
     }
 
