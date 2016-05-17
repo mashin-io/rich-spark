@@ -17,12 +17,14 @@
 
 package org.apache.spark.streaming.dstream
 
+import org.apache.spark.streaming.event.Event
+
 import scala.reflect.ClassTag
 
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming._
 
 private[streaming]
 class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
@@ -35,7 +37,10 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
 
   super.persist(StorageLevel.MEMORY_ONLY_SER)
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  override def dependencies: List[Dependency[_]] = {
+    List(new TailDependency[(K, S)](this, 0, 1),
+      new EventDependency[(K, V)](parent))
+  }
 
   override def slideDuration: Duration = parent.slideDuration
 
@@ -60,14 +65,19 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
     Some(stateRDD)
   }
 
-  override def compute(validTime: Time): Option[RDD[(K, S)]] = {
+  override def compute(event: Event): Option[RDD[(K, S)]] = {
+
+    val prevStateAndParentRDDs = dependencies.zip(List(null, event))
+      .map { case (d, e) => d.rdds(e).headOption }
+    val prevStateRDDOption = prevStateAndParentRDDs(0).map(_.asInstanceOf[RDD[(K, S)]])
+    val parentRDDOption = prevStateAndParentRDDs(1).map(_.asInstanceOf[RDD[(K, V)]])
 
     // Try to get the previous state RDD
-    getOrCompute(validTime - slideDuration) match {
+    prevStateRDDOption match {
 
       case Some(prevStateRDD) =>    // If previous state RDD exists
         // Try to get the parent RDD
-        parent.getOrCompute(validTime) match {
+        parentRDDOption match {
           case Some(parentRDD) =>   // If parent RDD exists, then compute as usual
             computeUsingPreviousRDD(parentRDD, prevStateRDD)
           case None =>    // If parent RDD does not exist
@@ -84,7 +94,7 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
 
       case None =>    // If previous session RDD does not exist (first input data)
         // Try to get the parent RDD
-        parent.getOrCompute(validTime) match {
+        parentRDDOption match {
           case Some(parentRDD) =>   // If parent RDD exists, then compute as usual
             initialRDD match {
               case None =>
