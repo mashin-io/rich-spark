@@ -17,10 +17,11 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+
+import scala.reflect.ClassTag
 
 private[streaming]
 class MapValuedDStream[K: ClassTag, V: ClassTag, U: ClassTag](
@@ -28,12 +29,13 @@ class MapValuedDStream[K: ClassTag, V: ClassTag, U: ClassTag](
     mapValueFunc: V => U
   ) extends DStream[(K, U)](parent.ssc) {
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  override def dependencies: List[Dependency[_]] = List(new EventDependency[(K, V)](parent))
 
   override def slideDuration: Duration = parent.slideDuration
 
-  override def compute(validTime: Time): Option[RDD[(K, U)]] = {
-    parent.getOrCompute(validTime).map(_.mapValues[U](mapValueFunc))
+  override def compute(event: Event): Option[RDD[(K, U)]] = {
+    dependencies.flatMap(_.rdds(event)).headOption
+      .map(_.asInstanceOf[RDD[(K, V)]].mapValues[U](mapValueFunc))
   }
 }
 
