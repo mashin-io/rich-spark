@@ -20,9 +20,16 @@ package org.apache.spark.streaming.dstream
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.scheduler.Job
-import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+import org.apache.spark.streaming.{Time, Dependency, Duration, EventDependency}
 
 import scala.reflect.ClassTag
+
+private[streaming] case class ForEachFunction[T, EventOrTime](
+    func: (RDD[T], EventOrTime) => Unit)
+private[streaming] case class ForEachFunctionWithEvent[T](
+    override val func: (RDD[T], Event) => Unit) extends ForEachFunction[T, Event](func)
+private[streaming] case class ForEachFunctionWithTime[T](
+    override val func: (RDD[T], Time) => Unit) extends ForEachFunction[T, Time](func)
 
 /**
  * An internal DStream used to represent output operations like DStream.foreachRDD.
@@ -36,7 +43,7 @@ import scala.reflect.ClassTag
 private[streaming]
 class ForEachDStream[T: ClassTag] (
     parent: DStream[T],
-    foreachFunc: (RDD[T], Event) => Unit,
+    foreachFunc: ForEachFunction[T, _],
     displayInnerRDDOps: Boolean
   ) extends DStream[T](parent.ssc) {
 
@@ -52,8 +59,15 @@ class ForEachDStream[T: ClassTag] (
   override def generateJob(event: Event): Option[Job] = {
     getOrCompute(event) match {
       case Some(rdd) =>
-        val jobFunc = () => createRDDWithLocalProperties(event, displayInnerRDDOps) {
-          foreachFunc(rdd, event)
+        val jobFunc = foreachFunc match {
+          case foreachFuncWithEvent: ForEachFunctionWithEvent[T] =>
+            () => createRDDWithLocalProperties(event, displayInnerRDDOps) {
+              foreachFuncWithEvent.func(rdd, event)
+            }
+          case foreachFuncWithTime: ForEachFunctionWithTime[T] =>
+            () => createRDDWithLocalProperties(event, displayInnerRDDOps) {
+              foreachFuncWithTime.func(rdd, event.time)
+            }
         }
         Some(new Job(event, jobFunc))
       case None => None
