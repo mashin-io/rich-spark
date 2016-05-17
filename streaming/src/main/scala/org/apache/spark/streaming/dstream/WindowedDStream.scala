@@ -17,6 +17,8 @@
 
 package org.apache.spark.streaming.dstream
 
+import org.apache.spark.streaming.event.Event
+
 import scala.reflect.ClassTag
 
 import org.apache.spark.rdd.RDD
@@ -27,30 +29,27 @@ import org.apache.spark.streaming.Duration
 private[streaming]
 class WindowedDStream[T: ClassTag](
     parent: DStream[T],
-    _windowDuration: Duration,
-    _slideDuration: Duration)
+    _window: Int,
+    _slide: Int,
+    _skip: Int)
   extends DStream[T](parent.ssc) {
-
-  if (!_windowDuration.isMultipleOf(parent.slideDuration)) {
-    throw new Exception("The window duration of windowed DStream (" + _windowDuration + ") " +
-    "must be a multiple of the slide duration of parent DStream (" + parent.slideDuration + ")")
-  }
-
-  if (!_slideDuration.isMultipleOf(parent.slideDuration)) {
-    throw new Exception("The slide duration of windowed DStream (" + _slideDuration + ") " +
-    "must be a multiple of the slide duration of parent DStream (" + parent.slideDuration + ")")
-  }
 
   // Persist parent level by default, as those RDDs are going to be obviously reused.
   parent.persist(StorageLevel.MEMORY_ONLY_SER)
 
-  def windowDuration: Duration = _windowDuration
+  def windowLength: Int = _window
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  def slideLength: Int = _slide
 
-  override def slideDuration: Duration = _slideDuration
+  def skipLength: Int = _skip
 
-  override def parentRememberDuration: Duration = rememberDuration + windowDuration
+  override def dependencies: List[Dependency[_]] = {
+    List(new TailDependency[T](parent, skipLength, windowLength))
+  }
+
+  override def slideDuration: Duration = parent.slideDuration * windowLength
+
+  override def parentRememberDuration: Duration = rememberDuration + slideDuration
 
   override def persist(level: StorageLevel): DStream[T] = {
     // Do not let this windowed DStream be persisted as windowed (union-ed) RDDs share underlying
@@ -60,9 +59,16 @@ class WindowedDStream[T: ClassTag](
     this
   }
 
-  override def compute(validTime: Time): Option[RDD[T]] = {
-    val currentWindow = new Interval(validTime - windowDuration + parent.slideDuration, validTime)
-    val rddsInWindow = parent.slice(currentWindow)
-    Some(ssc.sc.union(rddsInWindow))
+  override def compute(event: Event): Option[RDD[T]] = {
+    val rddsInWindow = dependencies.head.asInstanceOf[TailDependency[T]].rdds(event)
+    if (rddsInWindow.nonEmpty
+      && event.index > 0 && event.index % slideLength == 0) {
+      Some(ssc.sc.union(rddsInWindow))
+    } else {
+      None
+    }
+    //val currentWindow = new Interval(validTime - windowLength + parent.slideDuration, validTime)
+    //val rddsInWindow = parent.slice(currentWindow)
+    //Some(ssc.sc.union(rddsInWindow))
   }
 }
