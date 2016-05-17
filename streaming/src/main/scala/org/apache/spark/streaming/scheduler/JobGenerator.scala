@@ -177,9 +177,9 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     logDebug("Got event " + jobGeneratorEvent)
     jobGeneratorEvent match {
       case GenerateJobs(event) => generateJobs(event)
-      case ClearMetadata(time) => clearMetadata(time)
-      case DoCheckpoint(time, clearCheckpointDataLater) =>
-        doCheckpoint(time, clearCheckpointDataLater)
+      case ClearMetadata(event) => clearMetadata(event)
+      case DoCheckpoint(event, clearCheckpointDataLater) =>
+        doCheckpoint(event, clearCheckpointDataLater)
       case ClearCheckpointData(time) => clearCheckpointData(time)
     }
   }
@@ -249,7 +249,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
     ssc.sparkContext.setLocalProperty(RDD.CHECKPOINT_ALL_MARKED_ANCESTORS, "true")
     Try {
-      //TODO: This is now done by each receiver input dstream generateJob method
+      //TODO: This is now done by each receiver input dstream compute method
       //// allocate received blocks to batch
       //graph.getBoundStreams(event.eventSource)
       //  .filter(_.isInstanceOf[ReceiverInputDStream[_]])
