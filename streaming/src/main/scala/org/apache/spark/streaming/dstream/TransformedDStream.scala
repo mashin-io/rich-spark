@@ -17,16 +17,17 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
 import org.apache.spark.SparkException
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+
+import scala.reflect.ClassTag
 
 private[streaming]
 class TransformedDStream[U: ClassTag] (
     parents: Seq[DStream[_]],
-    transformFunc: (Seq[RDD[_]], Time) => RDD[U]
+    transformFunc: (Seq[RDD[_]], Event) => RDD[U]
   ) extends DStream[U](parents.head.ssc) {
 
   require(parents.nonEmpty, "List of DStreams to transform is empty")
@@ -34,16 +35,16 @@ class TransformedDStream[U: ClassTag] (
   require(parents.map(_.slideDuration).distinct.size == 1,
     "Some of the DStreams have different slide durations")
 
-  override def dependencies: List[DStream[_]] = parents.toList
+  override def dependencies: List[Dependency[_]] = parents.toList.map(new EventDependency(_))
 
   override def slideDuration: Duration = parents.head.slideDuration
 
-  override def compute(validTime: Time): Option[RDD[U]] = {
-    val parentRDDs = parents.map { parent => parent.getOrCompute(validTime).getOrElse(
+  override def compute(event: Event): Option[RDD[U]] = {
+    val parentRDDs = dependencies.map(_.rdds(event).headOption).map { _.getOrElse(
       // Guard out against parent DStream that return None instead of Some(rdd) to avoid NPE
-      throw new SparkException(s"Couldn't generate RDD from parent at time $validTime"))
+      throw new SparkException(s"Couldn't generate RDD from parent at event $event"))
     }
-    val transformedRDD = transformFunc(parentRDDs, validTime)
+    val transformedRDD = transformFunc(parentRDDs, event)
     if (transformedRDD == null) {
       throw new SparkException("Transform function must not return null. " +
         "Return SparkContext.emptyRDD() instead to represent no element " +
@@ -60,8 +61,8 @@ class TransformedDStream[U: ClassTag] (
    * displayed in the UI.
    */
   override protected[streaming] def createRDDWithLocalProperties[U](
-      time: Time,
+      event: Event,
       displayInnerRDDOps: Boolean)(body: => U): U = {
-    super.createRDDWithLocalProperties(time, displayInnerRDDOps = true)(body)
+    super.createRDDWithLocalProperties(event, displayInnerRDDOps = true)(body)
   }
 }
