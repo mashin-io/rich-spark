@@ -17,15 +17,16 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
-
-import org.apache.spark._
+import org.apache.spark.HashPartitioner
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.rdd.{EmptyRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.dstream.InternalMapWithStateDStream._
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.streaming.rdd.{MapWithStateRDD, MapWithStateRDDRecord}
+
+import scala.reflect.ClassTag
 
 /**
  * :: Experimental ::
@@ -59,10 +60,14 @@ private[streaming] class MapWithStateDStreamImpl[
 
   override def slideDuration: Duration = internalStream.slideDuration
 
-  override def dependencies: List[DStream[_]] = List(internalStream)
+  override def dependencies: List[Dependency[_]] = List(
+    new EventDependency[MapWithStateRDDRecord[KeyType, StateType, MappedType]](internalStream))
 
-  override def compute(validTime: Time): Option[RDD[MappedType]] = {
-    internalStream.getOrCompute(validTime).map { _.flatMap[MappedType] { _.mappedData } }
+  override def compute(event: Event): Option[RDD[MappedType]] = {
+    dependencies.head.rdds(event).headOption.map {
+      _.asInstanceOf[MapWithStateRDD[KeyType, ValueType, StateType, MappedType]]
+        .flatMap[MappedType] { _.mappedData }
+    }
   }
 
   /**
@@ -115,7 +120,10 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
   override def slideDuration: Duration = parent.slideDuration
 
-  override def dependencies: List[DStream[_]] = List(parent)
+  override def dependencies: List[Dependency[_]] = {
+    List(new TailDependency[MapWithStateRDDRecord[K, S, E]](this, skip = 0, size = 1),
+      new EventDependency[(K, V)](parent))
+  }
 
   /** Enable automatic checkpointing */
   override val mustCheckpoint = true
@@ -129,16 +137,20 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
   }
 
   /** Method that generates a RDD for the given time */
-  override def compute(validTime: Time): Option[RDD[MapWithStateRDDRecord[K, S, E]]] = {
+  override def compute(event: Event): Option[RDD[MapWithStateRDDRecord[K, S, E]]] = {
+    val prevStateAndDataRDDs = dependencies.zip(List(null, event))
+      .map { case (d, e) => d.rdds(e).headOption }
+
     // Get the previous state or create a new empty state RDD
-    val prevStateRDD = getOrCompute(validTime - slideDuration) match {
+    val prevStateRDD = prevStateAndDataRDDs(0)
+      .map(_.asInstanceOf[MapWithStateRDD[K, V, S, E]]) match {
       case Some(rdd) =>
         if (rdd.partitioner != Some(partitioner)) {
           // If the RDD is not partitioned the right way, let us repartition it using the
           // partition index as the key. This is to ensure that state RDD is always partitioned
           // before creating another state RDD using it
           MapWithStateRDD.createFromRDD[K, V, S, E](
-            rdd.flatMap { _.stateMap.getAll() }, partitioner, validTime)
+            rdd.flatMap { _.stateMap.getAll() }, partitioner, event.time)
         } else {
           rdd
         }
@@ -146,22 +158,22 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
         MapWithStateRDD.createFromPairRDD[K, V, S, E](
           spec.getInitialStateRDD().getOrElse(new EmptyRDD[(K, S)](ssc.sparkContext)),
           partitioner,
-          validTime
+          event.time
         )
     }
 
 
     // Compute the new state RDD with previous state RDD and partitioned data RDD
     // Even if there is no data RDD, use an empty one to create a new state RDD
-    val dataRDD = parent.getOrCompute(validTime).getOrElse {
+    val dataRDD = prevStateAndDataRDDs(1).map(_.asInstanceOf[RDD[(K, V)]]).getOrElse {
       context.sparkContext.emptyRDD[(K, V)]
     }
     val partitionedDataRDD = dataRDD.partitionBy(partitioner)
     val timeoutThresholdTime = spec.getTimeoutInterval().map { interval =>
-      (validTime - interval).milliseconds
+      (event.time - interval).milliseconds
     }
     Some(new MapWithStateRDD(
-      prevStateRDD, partitionedDataRDD, mappingFunction, validTime, timeoutThresholdTime))
+      prevStateRDD, partitionedDataRDD, mappingFunction, event.time, timeoutThresholdTime))
   }
 }
 
