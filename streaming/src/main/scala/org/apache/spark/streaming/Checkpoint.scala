@@ -23,6 +23,7 @@ import java.util.concurrent.RejectedExecutionException
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.streaming.event.Event
 
 import org.apache.spark.{SparkConf, SparkException}
 import org.apache.spark.deploy.SparkHadoopUtil
@@ -32,7 +33,7 @@ import org.apache.spark.streaming.scheduler.JobGenerator
 import org.apache.spark.util.Utils
 
 private[streaming]
-class Checkpoint(ssc: StreamingContext, val checkpointTime: Time)
+class Checkpoint(ssc: StreamingContext, val checkpointEvent: Event)
   extends Logging with Serializable {
   val master = ssc.sc.master
   val framework = ssc.sc.appName
@@ -40,7 +41,7 @@ class Checkpoint(ssc: StreamingContext, val checkpointTime: Time)
   val graph = ssc.graph
   val checkpointDir = ssc.checkpointDir
   val checkpointDuration = ssc.checkpointDuration
-  val pendingTimes = ssc.scheduler.getPendingTimes().toArray
+  val pendingEvents = ssc.scheduler.getPendingEvents().toArray
   val sparkConfPairs = ssc.conf.getAll
 
   def createSparkConf(): SparkConf = {
@@ -83,8 +84,8 @@ class Checkpoint(ssc: StreamingContext, val checkpointTime: Time)
     assert(master != null, "Checkpoint.master is null")
     assert(framework != null, "Checkpoint.framework is null")
     assert(graph != null, "Checkpoint.graph is null")
-    assert(checkpointTime != null, "Checkpoint.checkpointTime is null")
-    logInfo(s"Checkpoint for time $checkpointTime validated")
+    assert(checkpointEvent != null, "Checkpoint.checkpointTime is null")
+    logInfo(s"Checkpoint for time $checkpointEvent validated")
   }
 }
 
@@ -191,12 +192,13 @@ class CheckpointWriter(
   @volatile private var latestCheckpointTime: Time = null
 
   class CheckpointWriteHandler(
-      checkpointTime: Time,
+      checkpointEvent: Event,
       bytes: Array[Byte],
       clearCheckpointDataLater: Boolean) extends Runnable {
     def run() {
-      if (latestCheckpointTime == null || latestCheckpointTime < checkpointTime) {
-        latestCheckpointTime = checkpointTime
+      //TODO: Events could have the same time, leading to use the same checkpointFile name
+      if (latestCheckpointTime == null || latestCheckpointTime < checkpointEvent.time) {
+        latestCheckpointTime = checkpointEvent.time
       }
       if (fs == null) {
         fs = new Path(checkpointDir).getFileSystem(hadoopConf)
@@ -219,7 +221,7 @@ class CheckpointWriter(
       while (attempts < MAX_ATTEMPTS && !stopped) {
         attempts += 1
         try {
-          logInfo(s"Saving checkpoint for time $checkpointTime to file '$checkpointFile'")
+          logInfo(s"Saving checkpoint for event $checkpointEvent to file '$checkpointFile'")
 
           // Write checkpoint to temp file
           if (fs.exists(tempFile)) {
@@ -259,9 +261,9 @@ class CheckpointWriter(
 
           // All done, print success
           val finishTime = System.currentTimeMillis()
-          logInfo(s"Checkpoint for time $checkpointTime saved to file '$checkpointFile'" +
+          logInfo(s"Checkpoint for event $checkpointEvent saved to file '$checkpointFile'" +
             s", took ${bytes.length} bytes and ${finishTime - startTime} ms")
-          jobGenerator.onCheckpointCompletion(checkpointTime, clearCheckpointDataLater)
+          jobGenerator.onCheckpointCompletion(checkpointEvent, clearCheckpointDataLater)
           return
         } catch {
           case ioe: IOException =>
@@ -270,7 +272,7 @@ class CheckpointWriter(
             fs = null
         }
       }
-      logWarning(s"Could not write checkpoint for time $checkpointTime to file '$checkpointFile'")
+      logWarning(s"Could not write checkpoint for event $checkpointEvent to file '$checkpointFile'")
     }
   }
 
@@ -278,8 +280,8 @@ class CheckpointWriter(
     try {
       val bytes = Checkpoint.serialize(checkpoint, conf)
       executor.execute(new CheckpointWriteHandler(
-        checkpoint.checkpointTime, bytes, clearCheckpointDataLater))
-      logInfo(s"Submitted checkpoint of time ${checkpoint.checkpointTime} to writer queue")
+        checkpoint.checkpointEvent, bytes, clearCheckpointDataLater))
+      logInfo(s"Submitted checkpoint of event ${checkpoint.checkpointEvent} to writer queue")
     } catch {
       case rej: RejectedExecutionException =>
         logError("Could not submit checkpoint task to the thread pool executor", rej)
@@ -345,7 +347,7 @@ object CheckpointReader extends Logging {
         val fis = fs.open(file)
         val cp = Checkpoint.deserialize(fis, conf)
         logInfo(s"Checkpoint successfully loaded from file $file")
-        logInfo(s"Checkpoint was generated at time ${cp.checkpointTime}")
+        logInfo(s"Checkpoint was generated at event ${cp.checkpointEvent}")
         return Some(cp)
       } catch {
         case e: Exception =>
