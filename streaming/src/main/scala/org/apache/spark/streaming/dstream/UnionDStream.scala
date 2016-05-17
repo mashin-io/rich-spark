@@ -17,12 +17,13 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.ClassTag
-
 import org.apache.spark.SparkException
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 private[streaming]
 class UnionDStream[T: ClassTag](parents: Array[DStream[T]])
@@ -33,17 +34,18 @@ class UnionDStream[T: ClassTag](parents: Array[DStream[T]])
   require(parents.map(_.slideDuration).distinct.length == 1,
     "Some of the DStreams have different slide durations")
 
-  override def dependencies: List[DStream[_]] = parents.toList
+  override def dependencies: List[Dependency[_]] = parents.toList.map(new EventDependency[T](_))
 
   override def slideDuration: Duration = parents.head.slideDuration
 
-  override def compute(validTime: Time): Option[RDD[T]] = {
+  override def compute(event: Event): Option[RDD[T]] = {
     val rdds = new ArrayBuffer[RDD[T]]()
-    parents.map(_.getOrCompute(validTime)).foreach {
-      case Some(rdd) => rdds += rdd
-      case None => throw new SparkException("Could not generate RDD from a parent for unifying at" +
-        s" time $validTime")
-    }
+    dependencies.map(_.rdds(event).headOption.map(_.asInstanceOf[RDD[T]]))
+      .foreach {
+        case Some(rdd) => rdds += rdd
+        case None => throw new SparkException("Could not generate RDD from " +
+          s"a parent for unifying at event $event")
+      }
     if (rdds.nonEmpty) {
       Some(ssc.sc.union(rdds))
     } else {
