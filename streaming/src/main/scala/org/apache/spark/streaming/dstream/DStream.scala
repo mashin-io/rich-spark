@@ -662,7 +662,8 @@ abstract class DStream[T: ClassTag] (
       foreachFunc: (RDD[T], Time) => Unit,
       displayInnerRDDOps: Boolean): Unit = {
     new ForEachDStream(this,
-      context.sparkContext.clean(foreachFunc, false), displayInnerRDDOps).register()
+      ForEachFunctionWithTime(context.sparkContext.clean(foreachFunc, false)),
+      displayInnerRDDOps).register()
   }
 
   /**
@@ -690,7 +691,7 @@ abstract class DStream[T: ClassTag] (
       assert(rdds.length == 1)
       cleanedF(rdds.head.asInstanceOf[RDD[T]], time)
     }
-    new TransformedDStream[U](Seq(this), realTransformFunc)
+    new TransformedDStream[U](Seq(this), TransformFunctionWithTime[U](realTransformFunc))
   }
 
   /**
@@ -724,7 +725,7 @@ abstract class DStream[T: ClassTag] (
       val rdd2 = rdds(1).asInstanceOf[RDD[U]]
       cleanedF(rdd1, rdd2, time)
     }
-    new TransformedDStream[V](Seq(this, other), realTransformFunc)
+    new TransformedDStream[V](Seq(this, other), TransformFunctionWithTime[V](realTransformFunc))
   }
 
   /**
@@ -776,7 +777,10 @@ abstract class DStream[T: ClassTag] (
    *                       DStream's batching interval
    */
   def window(windowDuration: Duration, slideDuration: Duration): DStream[T] = ssc.withScope {
-    new WindowedDStream(this, windowDuration, slideDuration)
+    new WindowedDStream(this,
+      (windowDuration / this.slideDuration).toInt,
+      (slideDuration / this.slideDuration).toInt,
+      _skip = 0)
   }
 
   /**
