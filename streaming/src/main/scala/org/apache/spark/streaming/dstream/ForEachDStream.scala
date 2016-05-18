@@ -24,12 +24,12 @@ import org.apache.spark.streaming.{Time, Dependency, Duration, EventDependency}
 
 import scala.reflect.ClassTag
 
-private[streaming] case class ForEachFunction[T, EventOrTime](
+private[streaming] abstract class ForEachFunction[T, EventOrTime](
     func: (RDD[T], EventOrTime) => Unit)
 private[streaming] case class ForEachFunctionWithEvent[T](
-    override val func: (RDD[T], Event) => Unit) extends ForEachFunction[T, Event](func)
+    func: (RDD[T], Event) => Unit) extends ForEachFunction[T, Event](func)
 private[streaming] case class ForEachFunctionWithTime[T](
-    override val func: (RDD[T], Time) => Unit) extends ForEachFunction[T, Time](func)
+    func: (RDD[T], Time) => Unit) extends ForEachFunction[T, Time](func)
 
 /**
  * An internal DStream used to represent output operations like DStream.foreachRDD.
