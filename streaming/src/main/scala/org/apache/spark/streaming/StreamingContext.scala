@@ -21,6 +21,8 @@ import java.io.{InputStream, NotSerializableException}
 import java.util.Properties
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
+import org.apache.spark.streaming.event.{TimerEvent, TimerEventSource}
+
 import scala.collection.Map
 import scala.collection.mutable.Queue
 import scala.reflect.ClassTag
@@ -47,7 +49,7 @@ import org.apache.spark.streaming.dstream._
 import org.apache.spark.streaming.receiver.Receiver
 import org.apache.spark.streaming.scheduler.{ExecutorAllocationManager, JobScheduler, StreamingListener}
 import org.apache.spark.streaming.ui.{StreamingJobProgressListener, StreamingTab}
-import org.apache.spark.util.{CallSite, ShutdownHookManager, ThreadUtils, Utils}
+import org.apache.spark.util._
 
 /**
  * Main entry point for Spark Streaming functionality. It provides methods used to create
@@ -68,6 +70,7 @@ class StreamingContext private[streaming] (
 
   /**
    * Create a StreamingContext using an existing SparkContext.
+   *
    * @param sparkContext existing SparkContext
    * @param batchDuration the time interval at which streaming data will be divided into batches
    */
@@ -77,6 +80,7 @@ class StreamingContext private[streaming] (
 
   /**
    * Create a StreamingContext by providing the configuration necessary for a new SparkContext.
+   *
    * @param conf a org.apache.spark.SparkConf object specifying Spark parameters
    * @param batchDuration the time interval at which streaming data will be divided into batches
    */
@@ -86,6 +90,7 @@ class StreamingContext private[streaming] (
 
   /**
    * Create a StreamingContext by providing the details necessary for creating a new SparkContext.
+   *
    * @param master cluster URL to connect to (e.g. mesos://host:port, spark://host:port, local[4]).
    * @param appName a name for your job, to display on the cluster web UI
    * @param batchDuration the time interval at which streaming data will be divided into batches
@@ -103,6 +108,7 @@ class StreamingContext private[streaming] (
 
   /**
    * Recreate a StreamingContext from a checkpoint file.
+   *
    * @param path Path to the directory that was specified as the checkpoint directory
    * @param hadoopConf Optional, configuration object if necessary for reading from
    *                   HDFS compatible filesystems
@@ -112,12 +118,14 @@ class StreamingContext private[streaming] (
 
   /**
    * Recreate a StreamingContext from a checkpoint file.
+   *
    * @param path Path to the directory that was specified as the checkpoint directory
    */
   def this(path: String) = this(path, SparkHadoopUtil.get.conf)
 
   /**
    * Recreate a StreamingContext from a checkpoint file using an existing SparkContext.
+   *
    * @param path Path to the directory that was specified as the checkpoint directory
    * @param sparkContext Existing SparkContext
    */
@@ -152,6 +160,18 @@ class StreamingContext private[streaming] (
 
   private[streaming] val env = sc.env
 
+  private[streaming] val clock = {
+    val clockClass = sc.conf.get(
+      "spark.streaming.clock", "org.apache.spark.util.SystemClock")
+    try {
+      Utils.classForName(clockClass).newInstance().asInstanceOf[Clock]
+    } catch {
+      case e: ClassNotFoundException if clockClass.startsWith("org.apache.spark.streaming") =>
+        val newClockClass = clockClass.replace("org.apache.spark.streaming", "org.apache.spark")
+        Utils.classForName(newClockClass).newInstance().asInstanceOf[Clock]
+    }
+  }
+
   private[streaming] val graph: DStreamGraph = {
     if (isCheckpointPresent) {
       _cp.graph.setContext(this)
@@ -160,7 +180,7 @@ class StreamingContext private[streaming] (
     } else {
       require(_batchDur != null, "Batch duration for StreamingContext cannot be null")
       val newGraph = new DStreamGraph()
-      newGraph.setBatchDuration(_batchDur)
+      newGraph.setBatchDuration(_batchDur, this)
       newGraph
     }
   }
@@ -220,6 +240,7 @@ class StreamingContext private[streaming] (
    * DStreams remember RDDs only for a limited duration of time and release them for garbage
    * collection. This method allows the developer to specify how long to remember the RDDs (
    * if the developer wishes to query old data outside the DStream computation).
+   *
    * @param duration Minimum duration that each DStream should remember its RDDs
    */
   def remember(duration: Duration) {
@@ -229,6 +250,7 @@ class StreamingContext private[streaming] (
   /**
    * Set the context to periodically checkpoint the DStream operations for driver
    * fault-tolerance.
+   *
    * @param directory HDFS-compatible directory where the checkpoint data will be reliably stored.
    *                  Note that this must be a fault-tolerant file system like HDFS.
    */
@@ -273,9 +295,19 @@ class StreamingContext private[streaming] (
     RDDOperationScope.withScope(sc, name, allowNesting = false, ignoreParent = false)(body)
   }
 
+  def timer(
+      startTime: Time,
+      endTime: Time,
+      period: Duration,
+      name: String)
+    : TimerEventSource = {
+    new TimerEventSource(this, startTime, endTime, period, name)
+  }
+
   /**
    * Create an input stream with any arbitrary user implemented receiver.
    * Find more details at http://spark.apache.org/docs/latest/streaming-custom-receivers.html
+   *
    * @param receiver Custom implementation of Receiver
    */
   def receiverStream[T: ClassTag](receiver: Receiver[T]): ReceiverInputDStream[T] = {
@@ -288,6 +320,7 @@ class StreamingContext private[streaming] (
    * Creates an input stream from TCP source hostname:port. Data is received using
    * a TCP socket and the receive bytes is interpreted as UTF8 encoded `\n` delimited
    * lines.
+   *
    * @param hostname      Hostname to connect to for receiving data
    * @param port          Port to connect to for receiving data
    * @param storageLevel  Storage level to use for storing the received objects
@@ -306,6 +339,7 @@ class StreamingContext private[streaming] (
    * Creates an input stream from TCP source hostname:port. Data is received using
    * a TCP socket and the receive bytes it interpreted as object using the given
    * converter.
+   *
    * @param hostname      Hostname to connect to for receiving data
    * @param port          Port to connect to for receiving data
    * @param converter     Function to convert the byte stream to objects
@@ -326,6 +360,7 @@ class StreamingContext private[streaming] (
    * as serialized blocks (serialized using the Spark's serializer) that can be directly
    * pushed into the block manager without deserializing them. This is the most efficient
    * way to receive data.
+   *
    * @param hostname      Hostname to connect to for receiving data
    * @param port          Port to connect to for receiving data
    * @param storageLevel  Storage level to use for storing the received objects
@@ -345,6 +380,7 @@ class StreamingContext private[streaming] (
    * for new files and reads them using the given key-value types and input format.
    * Files must be written to the monitored directory by "moving" them from another
    * location within the same file system. File names starting with . are ignored.
+   *
    * @param directory HDFS directory to monitor for new file
    * @tparam K Key type for reading HDFS file
    * @tparam V Value type for reading HDFS file
@@ -363,6 +399,7 @@ class StreamingContext private[streaming] (
    * for new files and reads them using the given key-value types and input format.
    * Files must be written to the monitored directory by "moving" them from another
    * location within the same file system.
+   *
    * @param directory HDFS directory to monitor for new file
    * @param filter Function to filter paths to process
    * @param newFilesOnly Should process only new files and ignore existing files in the directory
@@ -383,6 +420,7 @@ class StreamingContext private[streaming] (
    * for new files and reads them using the given key-value types and input format.
    * Files must be written to the monitored directory by "moving" them from another
    * location within the same file system. File names starting with . are ignored.
+   *
    * @param directory HDFS directory to monitor for new file
    * @param filter Function to filter paths to process
    * @param newFilesOnly Should process only new files and ignore existing files in the directory
@@ -408,6 +446,7 @@ class StreamingContext private[streaming] (
    * as Text and input format as TextInputFormat). Files must be written to the
    * monitored directory by "moving" them from another location within the same
    * file system. File names starting with . are ignored.
+   *
    * @param directory HDFS directory to monitor for new file
    */
   def textFileStream(directory: String): DStream[String] = withNamedScope("text file stream") {
@@ -520,15 +559,15 @@ class StreamingContext private[streaming] (
 
     // Verify whether the DStream checkpoint is serializable
     if (isCheckpointingEnabled) {
-      val checkpoint = new Checkpoint(this, Time(0))
+      val dummyCheckpoint = new Checkpoint(this, TimerEvent(null, Time(0), 0))
       try {
-        Checkpoint.serialize(checkpoint, conf)
+        Checkpoint.serialize(dummyCheckpoint, conf)
       } catch {
         case e: NotSerializableException =>
           throw new NotSerializableException(
             "DStream checkpointing has been enabled but the DStreams with their functions " +
               "are not serializable\n" +
-              SerializationDebugger.improveException(checkpoint, e).getMessage()
+              SerializationDebugger.improveException(dummyCheckpoint, e).getMessage()
           )
       }
     }
@@ -764,6 +803,7 @@ object StreamingContext extends Logging {
    *
    * Either return the "active" StreamingContext (that is, started but not stopped), or create a
    * new StreamingContext that is
+   *
    * @param creatingFunc   Function to create a new StreamingContext
    */
   @Experimental
