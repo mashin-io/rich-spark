@@ -20,14 +20,21 @@ package org.apache.spark.streaming.dstream
 import org.apache.spark.SparkException
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.event.Event
-import org.apache.spark.streaming.{Dependency, Duration, EventDependency}
+import org.apache.spark.streaming.{Time, Dependency, Duration, EventDependency}
 
 import scala.reflect.ClassTag
+
+private[streaming] case class TransformFunction[U, EventOrTime](
+    func: (Seq[RDD[_]], EventOrTime) => RDD[U])
+private[streaming] case class TransformFunctionWithEvent[U](
+    override val func: (Seq[RDD[_]], Event) => RDD[U]) extends TransformFunction[U, Event](func)
+private[streaming] case class TransformFunctionWithTime[U](
+    override val func: (Seq[RDD[_]], Time) => RDD[U]) extends TransformFunction[U, Time](func)
 
 private[streaming]
 class TransformedDStream[U: ClassTag] (
     parents: Seq[DStream[_]],
-    transformFunc: (Seq[RDD[_]], Event) => RDD[U]
+    transformFunc: TransformFunction[U, _]
   ) extends DStream[U](parents.head.ssc) {
 
   require(parents.nonEmpty, "List of DStreams to transform is empty")
@@ -44,7 +51,12 @@ class TransformedDStream[U: ClassTag] (
       // Guard out against parent DStream that return None instead of Some(rdd) to avoid NPE
       throw new SparkException(s"Couldn't generate RDD from parent at event $event"))
     }
-    val transformedRDD = transformFunc(parentRDDs, event)
+    val transformedRDD = transformFunc match {
+      case transformFuncWithEvent: TransformFunctionWithEvent[U] =>
+        transformFuncWithEvent.func(parentRDDs, event)
+      case transformFuncWithTime: TransformFunctionWithTime[U] =>
+        transformFuncWithTime.func(parentRDDs, event.time)
+    }
     if (transformedRDD == null) {
       throw new SparkException("Transform function must not return null. " +
         "Return SparkContext.emptyRDD() instead to represent no element " +
