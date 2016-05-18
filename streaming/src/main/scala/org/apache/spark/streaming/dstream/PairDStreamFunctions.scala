@@ -17,19 +17,18 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapred.{JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat}
-
-import org.apache.spark.{HashPartitioner, Partitioner}
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming._
 import org.apache.spark.streaming.StreamingContext.rddToFileName
+import org.apache.spark.streaming._
 import org.apache.spark.util.{SerializableConfiguration, SerializableJobConf}
+import org.apache.spark.{HashPartitioner, Partitioner}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 /**
  * Extra functions available on DStream of (key, value) pairs through an implicit conversion.
@@ -347,7 +346,10 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
     val cleanedFilterFunc = if (filterFunc != null) Some(ssc.sc.clean(filterFunc)) else None
     new ReducedWindowedDStream[K, V](
       self, cleanedReduceFunc, cleanedInvReduceFunc, cleanedFilterFunc,
-      windowDuration, slideDuration, partitioner
+      (windowDuration / self.slideDuration).toInt,
+      (slideDuration / self.slideDuration).toInt,
+      _skip = 0,
+      partitioner
     )
   }
 
