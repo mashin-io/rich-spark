@@ -32,7 +32,7 @@ class GlommedDStream[T: ClassTag](parent: DStream[T])
   override def slideDuration: Duration = parent.slideDuration
 
   override def compute(event: Event): Option[RDD[Array[T]]] = {
-    dependencies.flatMap(_.rdds(event)).headOption
+    dependencies.head.rdds(event).headOption
       .map(_.asInstanceOf[RDD[T]].glom())
   }
 }

@@ -39,7 +39,7 @@ class ShuffledDStream[K: ClassTag, V: ClassTag, C: ClassTag](
   override def slideDuration: Duration = parent.slideDuration
 
   override def compute(event: Event): Option[RDD[(K, C)]] = {
-    dependencies.flatMap(_.rdds(event)).headOption
+    dependencies.head.rdds(event).headOption
       .map(_.asInstanceOf[RDD[(K, V)]]) match {
       case Some(rdd) => Some(rdd.combineByKey[C](
           createCombiner, mergeValue, mergeCombiner, partitioner, mapSideCombine))

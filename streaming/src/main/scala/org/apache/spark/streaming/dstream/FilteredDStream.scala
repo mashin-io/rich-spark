@@ -34,7 +34,7 @@ class FilteredDStream[T: ClassTag](
   override def slideDuration: Duration = parent.slideDuration
 
   override def compute(event: Event): Option[RDD[T]] = {
-    dependencies.flatMap(_.rdds(event)).headOption
+    dependencies.head.rdds(event).headOption
       .map(_.asInstanceOf[RDD[T]].filter(filterFunc))
   }
 }
