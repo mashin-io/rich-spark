@@ -17,15 +17,14 @@
 
 package org.apache.spark.streaming
 
-import scala.collection.mutable.ArrayBuffer
-
-import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll}
-
-import org.apache.spark.{SparkConf, SparkContext, SparkFunSuite}
 import org.apache.spark.rdd.{RDD, RDDOperationScope}
 import org.apache.spark.streaming.dstream.DStream
-import org.apache.spark.streaming.ui.UIUtils
+import org.apache.spark.streaming.event.{Event, TimerEvent}
 import org.apache.spark.util.ManualClock
+import org.apache.spark.{SparkConf, SparkContext, SparkFunSuite}
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll}
+
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Tests whether scope information is passed from DStream operations to RDDs correctly.
@@ -52,6 +51,11 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
   before { assertPropertiesNotSet() }
   after { assertPropertiesNotSet() }
 
+  def timerEvent(time: Time): TimerEvent = {
+    new TimerEvent(ssc.graph.defaultTimer, time,
+      time.milliseconds / batchDuration.milliseconds - 1)
+  }
+
   test("dstream without scope") {
     val dummyStream = new DummyDStream(ssc)
     dummyStream.initialize(Time(0))
@@ -59,26 +63,30 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     // This DStream is not instantiated in any scope, so all RDDs
     // created by this stream should similarly not have a scope
     assert(dummyStream.baseScope === None)
-    assert(dummyStream.getOrCompute(Time(1000)).get.scope === None)
-    assert(dummyStream.getOrCompute(Time(2000)).get.scope === None)
-    assert(dummyStream.getOrCompute(Time(3000)).get.scope === None)
+    assert(dummyStream.getOrCompute(timerEvent(Time(1000))).get.scope === None)
+    assert(dummyStream.getOrCompute(timerEvent(Time(2000))).get.scope === None)
+    assert(dummyStream.getOrCompute(timerEvent(Time(3000))).get.scope === None)
   }
 
   test("input dstream without scope") {
     val inputStream = new DummyInputDStream(ssc)
     inputStream.initialize(Time(0))
 
+    val event1 = timerEvent(Time(1000))
+    val event2 = timerEvent(Time(2000))
+    val event3 = timerEvent(Time(3000))
+
     val baseScope = inputStream.baseScope.map(RDDOperationScope.fromJson)
-    val scope1 = inputStream.getOrCompute(Time(1000)).get.scope
-    val scope2 = inputStream.getOrCompute(Time(2000)).get.scope
-    val scope3 = inputStream.getOrCompute(Time(3000)).get.scope
+    val scope1 = inputStream.getOrCompute(event1).get.scope
+    val scope2 = inputStream.getOrCompute(event2).get.scope
+    val scope3 = inputStream.getOrCompute(event3).get.scope
 
     // This DStream is not instantiated in any scope, so all RDDs
     assertDefined(baseScope, scope1, scope2, scope3)
     assert(baseScope.get.name.startsWith("dummy stream"))
-    assertScopeCorrect(baseScope.get, scope1.get, 1000)
-    assertScopeCorrect(baseScope.get, scope2.get, 2000)
-    assertScopeCorrect(baseScope.get, scope3.get, 3000)
+    assertScopeCorrect(baseScope.get, scope1.get, event1)
+    assertScopeCorrect(baseScope.get, scope2.get, event2)
+    assertScopeCorrect(baseScope.get, scope3.get, event3)
   }
 
   test("scoping simple operations") {
@@ -87,14 +95,18 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     val filteredStream = mappedStream.filter { i => i % 2 == 0 }
     filteredStream.initialize(Time(0))
 
+    val event1 = timerEvent(Time(1000))
+    val event2 = timerEvent(Time(2000))
+    val event3 = timerEvent(Time(3000))
+
     val mappedScopeBase = mappedStream.baseScope.map(RDDOperationScope.fromJson)
-    val mappedScope1 = mappedStream.getOrCompute(Time(1000)).get.scope
-    val mappedScope2 = mappedStream.getOrCompute(Time(2000)).get.scope
-    val mappedScope3 = mappedStream.getOrCompute(Time(3000)).get.scope
+    val mappedScope1 = mappedStream.getOrCompute(event1).get.scope
+    val mappedScope2 = mappedStream.getOrCompute(event2).get.scope
+    val mappedScope3 = mappedStream.getOrCompute(event3).get.scope
     val filteredScopeBase = filteredStream.baseScope.map(RDDOperationScope.fromJson)
-    val filteredScope1 = filteredStream.getOrCompute(Time(1000)).get.scope
-    val filteredScope2 = filteredStream.getOrCompute(Time(2000)).get.scope
-    val filteredScope3 = filteredStream.getOrCompute(Time(3000)).get.scope
+    val filteredScope1 = filteredStream.getOrCompute(event1).get.scope
+    val filteredScope2 = filteredStream.getOrCompute(event2).get.scope
+    val filteredScope3 = filteredStream.getOrCompute(event3).get.scope
 
     // These streams are defined in their respective scopes "map" and "filter", so all
     // RDDs created by these streams should inherit the IDs and names of their parent
@@ -103,12 +115,12 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     assertDefined(filteredScopeBase, filteredScope1, filteredScope2, filteredScope3)
     assert(mappedScopeBase.get.name === "map")
     assert(filteredScopeBase.get.name === "filter")
-    assertScopeCorrect(mappedScopeBase.get, mappedScope1.get, 1000)
-    assertScopeCorrect(mappedScopeBase.get, mappedScope2.get, 2000)
-    assertScopeCorrect(mappedScopeBase.get, mappedScope3.get, 3000)
-    assertScopeCorrect(filteredScopeBase.get, filteredScope1.get, 1000)
-    assertScopeCorrect(filteredScopeBase.get, filteredScope2.get, 2000)
-    assertScopeCorrect(filteredScopeBase.get, filteredScope3.get, 3000)
+    assertScopeCorrect(mappedScopeBase.get, mappedScope1.get, event1)
+    assertScopeCorrect(mappedScopeBase.get, mappedScope2.get, event2)
+    assertScopeCorrect(mappedScopeBase.get, mappedScope3.get, event3)
+    assertScopeCorrect(filteredScopeBase.get, filteredScope1.get, event1)
+    assertScopeCorrect(filteredScopeBase.get, filteredScope2.get, event2)
+    assertScopeCorrect(filteredScopeBase.get, filteredScope3.get, event3)
   }
 
   test("scoping nested operations") {
@@ -118,32 +130,36 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     val countStream = inputStream.countByWindow(Seconds(10), Seconds(1))
     countStream.initialize(Time(0))
 
+    val event1 = timerEvent(Time(1000))
+    val event2 = timerEvent(Time(2000))
+    val event3 = timerEvent(Time(3000))
+
     val countScopeBase = countStream.baseScope.map(RDDOperationScope.fromJson)
-    val countScope1 = countStream.getOrCompute(Time(1000)).get.scope
-    val countScope2 = countStream.getOrCompute(Time(2000)).get.scope
-    val countScope3 = countStream.getOrCompute(Time(3000)).get.scope
+    val countScope1 = countStream.getOrCompute(event1).get.scope
+    val countScope2 = countStream.getOrCompute(event2).get.scope
+    val countScope3 = countStream.getOrCompute(event3).get.scope
 
     // Assert that all children RDDs inherit the DStream operation name correctly
     assertDefined(countScopeBase, countScope1, countScope2, countScope3)
     assert(countScopeBase.get.name === "countByWindow")
-    assertScopeCorrect(countScopeBase.get, countScope1.get, 1000)
-    assertScopeCorrect(countScopeBase.get, countScope2.get, 2000)
-    assertScopeCorrect(countScopeBase.get, countScope3.get, 3000)
+    assertScopeCorrect(countScopeBase.get, countScope1.get, event1)
+    assertScopeCorrect(countScopeBase.get, countScope2.get, event2)
+    assertScopeCorrect(countScopeBase.get, countScope3.get, event3)
 
     // All streams except the input stream should share the same scopes as `countStream`
     def testStream(stream: DStream[_]): Unit = {
       if (stream != inputStream) {
         val myScopeBase = stream.baseScope.map(RDDOperationScope.fromJson)
-        val myScope1 = stream.getOrCompute(Time(1000)).get.scope
-        val myScope2 = stream.getOrCompute(Time(2000)).get.scope
-        val myScope3 = stream.getOrCompute(Time(3000)).get.scope
+        val myScope1 = stream.getOrCompute(event1).get.scope
+        val myScope2 = stream.getOrCompute(event2).get.scope
+        val myScope3 = stream.getOrCompute(event3).get.scope
         assertDefined(myScopeBase, myScope1, myScope2, myScope3)
         assert(myScopeBase === countScopeBase)
         assert(myScope1 === countScope1)
         assert(myScope2 === countScope2)
         assert(myScope3 === countScope3)
         // Climb upwards to test the parent streams
-        stream.dependencies.foreach(testStream)
+        stream.dependenciesAsStreamsIgnoreThis.foreach(testStream)
       }
     }
     testStream(countStream)
@@ -154,22 +170,26 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     val transformedStream = inputStream.transform { _.map { _ -> 1}.reduceByKey(_ + _) }
     transformedStream.initialize(Time(0))
 
+    val event1 = timerEvent(Time(1000))
+    val event2 = timerEvent(Time(2000))
+    val event3 = timerEvent(Time(3000))
+
     val transformScopeBase = transformedStream.baseScope.map(RDDOperationScope.fromJson)
-    val transformScope1 = transformedStream.getOrCompute(Time(1000)).get.scope
-    val transformScope2 = transformedStream.getOrCompute(Time(2000)).get.scope
-    val transformScope3 = transformedStream.getOrCompute(Time(3000)).get.scope
+    val transformScope1 = transformedStream.getOrCompute(event1).get.scope
+    val transformScope2 = transformedStream.getOrCompute(event2).get.scope
+    val transformScope3 = transformedStream.getOrCompute(event3).get.scope
 
     // Assert that all children RDDs inherit the DStream operation name correctly
     assertDefined(transformScopeBase, transformScope1, transformScope2, transformScope3)
     assert(transformScopeBase.get.name === "transform")
-    assertNestedScopeCorrect(transformScope1.get, 1000)
-    assertNestedScopeCorrect(transformScope2.get, 2000)
-    assertNestedScopeCorrect(transformScope3.get, 3000)
+    assertNestedScopeCorrect(transformScope1.get, event1)
+    assertNestedScopeCorrect(transformScope2.get, event2)
+    assertNestedScopeCorrect(transformScope3.get, event3)
 
-    def assertNestedScopeCorrect(rddScope: RDDOperationScope, batchTime: Long): Unit = {
+    def assertNestedScopeCorrect(rddScope: RDDOperationScope, batchEvent: Event): Unit = {
       assert(rddScope.name === "reduceByKey")
       assert(rddScope.parent.isDefined)
-      assertScopeCorrect(transformScopeBase.get, rddScope.parent.get, batchTime)
+      assertScopeCorrect(transformScopeBase.get, rddScope.parent.get, batchEvent)
     }
   }
 
@@ -196,7 +216,7 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
     rddScopes.zipWithIndex.foreach { case (rddScope, idx) =>
       assert(rddScope.get.name === "reduceByKey")
       assert(rddScope.get.parent.isDefined)
-      assertScopeCorrect(foreachBaseScope.get, rddScope.get.parent.get, (idx + 1) * 1000)
+      assertScopeCorrect(foreachBaseScope.get, rddScope.get.parent.get, inputStream.events(idx))
     }
   }
 
@@ -211,12 +231,12 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
   private def assertScopeCorrect(
       baseScope: RDDOperationScope,
       rddScope: RDDOperationScope,
-      batchTime: Long): Unit = {
+      batchEvent: Event): Unit = {
     val (baseScopeId, baseScopeName) = (baseScope.id, baseScope.name)
-    val formattedBatchTime = UIUtils.formatBatchTime(
-      batchTime, ssc.graph.batchDuration.milliseconds, showYYYYMMSS = false)
-    assert(rddScope.id === s"${baseScopeId}_$batchTime")
-    assert(rddScope.name.replaceAll("\\n", " ") === s"$baseScopeName @ $formattedBatchTime")
+    //val formattedBatchTime = UIUtils.formatBatchTime(
+    //  batchEvent.time.milliseconds, ssc.graph.batchDuration.milliseconds, showYYYYMMSS = false)
+    assert(rddScope.id === s"${baseScopeId}_${batchEvent.instanceId}")
+    assert(rddScope.name.replaceAll("\\n", " ") === s"$baseScopeName @ $batchEvent")
     assert(rddScope.parent.isEmpty)  // There should not be any higher scope
   }
 
