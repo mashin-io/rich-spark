@@ -20,7 +20,10 @@ package org.apache.spark.streaming
 import java.io.{IOException, ObjectInputStream}
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import org.apache.spark.streaming.event.Event
+
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
@@ -32,7 +35,7 @@ import org.scalatest.time.{Seconds => ScalaTestSeconds, Span}
 import org.apache.spark.{SparkConf, SparkFunSuite}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.dstream.{DStream, ForEachDStream, InputDStream}
+import org.apache.spark.streaming.dstream.{ForEachFunctionWithTime, DStream, ForEachDStream, InputDStream}
 import org.apache.spark.streaming.scheduler._
 import org.apache.spark.util.{ManualClock, Utils}
 
@@ -40,18 +43,22 @@ import org.apache.spark.util.{ManualClock, Utils}
  * A dummy stream that does absolutely nothing.
  */
 private[streaming] class DummyDStream(ssc: StreamingContext) extends DStream[Int](ssc) {
-  override def dependencies: List[DStream[Int]] = List.empty
+  override def dependencies: List[Dependency[Int]] = List.empty
   override def slideDuration: Duration = Seconds(1)
-  override def compute(time: Time): Option[RDD[Int]] = Some(ssc.sc.emptyRDD[Int])
+  override def compute(event: Event): Option[RDD[Int]] = Some(ssc.sc.emptyRDD[Int])
 }
 
 /**
  * A dummy input stream that does absolutely nothing.
  */
 private[streaming] class DummyInputDStream(ssc: StreamingContext) extends InputDStream[Int](ssc) {
+  val events = ListBuffer.empty[Event]
   override def start(): Unit = { }
   override def stop(): Unit = { }
-  override def compute(time: Time): Option[RDD[Int]] = Some(ssc.sc.emptyRDD[Int])
+  override def compute(event: Event): Option[RDD[Int]] = {
+    events += event
+    Some(ssc.sc.emptyRDD[Int])
+  }
 }
 
 /**
@@ -66,9 +73,10 @@ class TestInputStream[T: ClassTag](_ssc: StreamingContext, input: Seq[Seq[T]], n
 
   def stop() {}
 
-  def compute(validTime: Time): Option[RDD[T]] = {
-    logInfo("Computing RDD for time " + validTime)
-    val index = ((validTime - zeroTime) / slideDuration - 1).toInt
+  def compute(event: Event): Option[RDD[T]] = {
+    logInfo("Computing RDD for event " + event)
+    //val index = ((event - zeroTime) / slideDuration - 1).toInt
+    val index = event.index.toInt
     val selectedInput = if (index < input.size) input(index) else Seq[T]()
 
     // lets us test cases where RDDs are not created
@@ -78,7 +86,7 @@ class TestInputStream[T: ClassTag](_ssc: StreamingContext, input: Seq[Seq[T]], n
 
     // Report the input data's information to InputInfoTracker for testing
     val inputInfo = StreamInputInfo(id, selectedInput.length.toLong)
-    ssc.scheduler.inputInfoTracker.reportInfo(validTime, inputInfo)
+    ssc.scheduler.inputInfoTracker.reportInfo(event, inputInfo)
 
     val rdd = ssc.sc.makeRDD(selectedInput, numPartitions)
     logInfo("Created RDD " + rdd.id + " with " + selectedInput)
@@ -96,10 +104,11 @@ class TestOutputStream[T: ClassTag](
     parent: DStream[T],
     val output: ConcurrentLinkedQueue[Seq[T]] =
       new ConcurrentLinkedQueue[Seq[T]]()
-  ) extends ForEachDStream[T](parent, (rdd: RDD[T], t: Time) => {
-    val collected = rdd.collect()
-    output.add(collected)
-  }, false) {
+  ) extends ForEachDStream[T](parent, new ForEachFunctionWithTime[T](
+    (rdd: RDD[T], t: Time) => {
+      val collected = rdd.collect()
+      output.add(collected)
+    }), false) {
 
   // This is to clear the output buffer every it is read from a checkpoint
   @throws(classOf[IOException])
@@ -120,10 +129,11 @@ class TestOutputStreamWithPartitions[T: ClassTag](
     parent: DStream[T],
     val output: ConcurrentLinkedQueue[Seq[Seq[T]]] =
       new ConcurrentLinkedQueue[Seq[Seq[T]]]())
-  extends ForEachDStream[T](parent, (rdd: RDD[T], t: Time) => {
-    val collected = rdd.glom().collect().map(_.toSeq)
-    output.add(collected)
-  }, false) {
+  extends ForEachDStream[T](parent, new ForEachFunctionWithTime[T](
+    (rdd: RDD[T], t: Time) => {
+      val collected = rdd.glom().collect().map(_.toSeq)
+      output.add(collected)
+    }), false) {
 
   // This is to clear the output buffer every it is read from a checkpoint
   @throws(classOf[IOException])
@@ -143,7 +153,7 @@ class BatchCounter(ssc: StreamingContext) {
   // All access to this state should be guarded by `BatchCounter.this.synchronized`
   private var numCompletedBatches = 0
   private var numStartedBatches = 0
-  private var lastCompletedBatchTime: Time = null
+  private var lastCompletedBatchEvent: Event = null
 
   private val listener = new StreamingListener {
     override def onBatchStarted(batchStarted: StreamingListenerBatchStarted): Unit =
@@ -154,7 +164,7 @@ class BatchCounter(ssc: StreamingContext) {
     override def onBatchCompleted(batchCompleted: StreamingListenerBatchCompleted): Unit =
       BatchCounter.this.synchronized {
         numCompletedBatches += 1
-        lastCompletedBatchTime = batchCompleted.batchInfo.batchTime
+        lastCompletedBatchEvent = batchCompleted.batchInfo.batchEvent
         BatchCounter.this.notifyAll()
       }
   }
@@ -169,7 +179,7 @@ class BatchCounter(ssc: StreamingContext) {
   }
 
   def getLastCompletedBatchTime: Time = this.synchronized {
-    lastCompletedBatchTime
+    lastCompletedBatchEvent.time
   }
 
   /**
@@ -485,7 +495,8 @@ trait TestSuiteBase extends SparkFunSuite with BeforeAndAfter with Logging {
 
   /**
    * Test unary DStream operation with a list of inputs
-   * @param input      Sequence of input collections
+    *
+    * @param input      Sequence of input collections
    * @param operation  Binary DStream operation to be applied to the 2 inputs
    * @param expectedOutput Sequence of expected output collections
    * @param numBatches Number of batches to run the operation for
@@ -522,7 +533,8 @@ trait TestSuiteBase extends SparkFunSuite with BeforeAndAfter with Logging {
 
   /**
    * Test binary DStream operation with two lists of inputs
-   * @param input1     First sequence of input collections
+    *
+    * @param input1     First sequence of input collections
    * @param input2     Second sequence of input collections
    * @param operation  Binary DStream operation to be applied to the 2 inputs
    * @param expectedOutput Sequence of expected output collections
