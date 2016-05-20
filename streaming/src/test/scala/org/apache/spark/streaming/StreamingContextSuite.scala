@@ -20,6 +20,8 @@ package org.apache.spark.streaming
 import java.io.{File, NotSerializableException}
 import java.util.concurrent.atomic.AtomicInteger
 
+import org.apache.spark.streaming.event.TimerEvent
+
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 
@@ -105,7 +107,8 @@ class StreamingContextSuite extends SparkFunSuite with BeforeAndAfter with Timeo
     val ssc1 = new StreamingContext(myConf, batchDuration)
     addInputStream(ssc1).register()
     ssc1.start()
-    val cp = new Checkpoint(ssc1, Time(1000))
+    val cp = new Checkpoint(ssc1, new TimerEvent(
+      ssc1.graph.defaultTimer, Time(1000), 1000 / batchDuration.milliseconds - 1))
     assert(
       Utils.timeStringAsSeconds(cp.sparkConfPairs
           .toMap.getOrElse("spark.dummyTimeConfig", "-1")) === 10)
