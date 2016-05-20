@@ -19,6 +19,8 @@ package org.apache.spark.streaming.scheduler
 
 import java.util.concurrent.CountDownLatch
 
+import org.apache.spark.streaming.event.TimerEvent
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -90,7 +92,11 @@ class JobGeneratorSuite extends TestSuiteBase {
 
       // Get the blocks belonging to a batch
       def getBlocksOfBatch(batchTime: Long): Seq[ReceivedBlockInfo] = {
-        receiverTracker.getBlocksOfBatchAndStream(Time(batchTime), inputStream.id)
+        receiverTracker.getBlocksOfBatchAndStream(
+          new TimerEvent(ssc.graph.defaultTimer,
+            Time(batchTime),
+            (batchTime / batchDuration.milliseconds) - 1),
+          inputStream.id)
       }
 
       // Wait for new blocks to be received
@@ -116,7 +122,7 @@ class JobGeneratorSuite extends TestSuiteBase {
 
       // Wait for 3rd batch to start
       eventually(testTimeout) {
-        ssc.scheduler.getPendingTimes().contains(Time(numBatches * batchDuration.milliseconds))
+        ssc.scheduler.getPendingEvents().contains(Time(numBatches * batchDuration.milliseconds))
       }
 
       // Verify that the 3rd batch's block data is still present while the 3rd batch is incomplete
