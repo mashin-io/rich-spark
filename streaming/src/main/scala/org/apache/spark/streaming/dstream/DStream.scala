@@ -217,7 +217,7 @@ abstract class DStream[T: ClassTag] (
     }
 
     // Initialize the dependencies
-    dependencies.foreach(_.stream.initialize(zeroTime))
+    dependenciesAsStreamsIgnoreThis.foreach(_.initialize(zeroTime))
   }
 
   private def validateAtInit(): Unit = {
@@ -233,6 +233,10 @@ abstract class DStream[T: ClassTag] (
           "Adding new inputs, transformations, and output operations after " +
             "stopping a context is not supported")
     }
+  }
+
+  private[streaming] def dependenciesAsStreamsIgnoreThis: List[DStream[_]] = {
+    dependencies.map(_.stream).distinct.filter(_ == this)
   }
 
   private[streaming] def validateAtStart() {
@@ -277,7 +281,7 @@ abstract class DStream[T: ClassTag] (
         s" ($checkpointDuration). Please set it to a value higher than $checkpointDuration."
     )
 
-    dependencies.foreach(_.stream.validateAtStart())
+    dependenciesAsStreamsIgnoreThis.foreach(_.validateAtStart())
 
     logInfo(s"Slide time = $slideDuration")
     logInfo(s"Storage level = ${storageLevel.description}")
@@ -292,7 +296,7 @@ abstract class DStream[T: ClassTag] (
     }
     ssc = s
     logInfo(s"Set context for $this")
-    dependencies.foreach(_.stream.setContext(ssc))
+    dependenciesAsStreamsIgnoreThis.foreach(_.setContext(ssc))
   }
 
   private[streaming] def setGraph(g: DStreamGraph) {
@@ -300,7 +304,7 @@ abstract class DStream[T: ClassTag] (
       throw new SparkException(s"Graph must not be set again for $this")
     }
     graph = g
-    dependencies.foreach(_.stream.setGraph(graph))
+    dependenciesAsStreamsIgnoreThis.foreach(_.setGraph(graph))
   }
 
   private[streaming] def remember(duration: Duration) {
@@ -308,7 +312,7 @@ abstract class DStream[T: ClassTag] (
       rememberDuration = duration
       logInfo(s"Duration for remembering RDDs set to $rememberDuration for $this")
     }
-    dependencies.foreach(_.stream.remember(parentRememberDuration))
+    dependenciesAsStreamsIgnoreThis.foreach(_.remember(parentRememberDuration))
   }
 
   /** Checks whether the 'time' is valid wrt slideDuration for generating RDD */
@@ -475,7 +479,7 @@ abstract class DStream[T: ClassTag] (
     }
     logDebug(s"Cleared ${oldRDDs.size} RDDs that were older than " +
       s"${event.time - rememberDuration}: ${oldRDDs.keys.mkString(", ")}")
-    dependencies.foreach(_.stream.clearMetadata(event))
+    dependenciesAsStreamsIgnoreThis.foreach(_.clearMetadata(event))
   }
 
   /**
@@ -488,14 +492,14 @@ abstract class DStream[T: ClassTag] (
   private[streaming] def updateCheckpointData(event: Event) {
     logDebug(s"Updating checkpoint data for event $event")
     checkpointData.update(event)
-    dependencies.foreach(_.stream.updateCheckpointData(event))
+    dependenciesAsStreamsIgnoreThis.foreach(_.updateCheckpointData(event))
     logDebug(s"Updated checkpoint data for event $event: $checkpointData")
   }
 
   private[streaming] def clearCheckpointData(event: Event) {
     logDebug("Clearing checkpoint data")
     checkpointData.cleanup(event)
-    dependencies.foreach(_.stream.clearCheckpointData(event))
+    dependenciesAsStreamsIgnoreThis.foreach(_.clearCheckpointData(event))
     logDebug("Cleared checkpoint data")
   }
 
@@ -510,7 +514,7 @@ abstract class DStream[T: ClassTag] (
       // Create RDDs from the checkpoint data
       logInfo("Restoring checkpoint data")
       checkpointData.restore()
-      dependencies.foreach(_.stream.restoreCheckpointData())
+      dependenciesAsStreamsIgnoreThis.foreach(_.restoreCheckpointData())
       restoredFromCheckpointData = true
       logInfo("Restored checkpoint data")
     }
