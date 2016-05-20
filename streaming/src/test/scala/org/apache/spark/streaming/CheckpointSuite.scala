@@ -21,6 +21,8 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File, ObjectOutputS
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import org.apache.spark.streaming.event.{TimerEvent, Event}
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
@@ -49,7 +51,7 @@ class CheckpointInputDStream(_ssc: StreamingContext) extends InputDStream[Int](_
   protected[streaming] override val checkpointData = new FileInputDStreamCheckpointData
   override def start(): Unit = { }
   override def stop(): Unit = { }
-  override def compute(time: Time): Option[RDD[Int]] = Some(ssc.sc.makeRDD(Seq(1)))
+  override def compute(event: Event): Option[RDD[Int]] = Some(ssc.sc.makeRDD(Seq(1)))
   private[streaming]
   class FileInputDStreamCheckpointData extends DStreamCheckpointData(this) {
     @transient
@@ -140,7 +142,7 @@ trait DStreamCheckpointTester { self: SparkFunSuite =>
     TestOutputStreamWithPartitions[V] = {
     streams.collect {
       case ds: TestOutputStreamWithPartitions[V @unchecked] => ds
-    }.head
+    }.head.asInstanceOf[TestOutputStreamWithPartitions[V]]
   }
 
 
@@ -257,7 +259,9 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
       .map(t => (t._1, t._2))
     }
     var ssc = setupStreams(input, operation)
-    var stateStream = ssc.graph.getOutputStreams().head.dependencies.head.dependencies.head
+    var stateStream = ssc.graph.getOutputStreams().head
+      .dependencies.head.stream
+      .dependencies.head.stream
 
     // Run till a time such that at least one RDD in the stream should have been checkpointed,
     // then check whether some RDD has been checkpointed or not
@@ -267,8 +271,8 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     assert(!stateStream.checkpointData.currentCheckpointFiles.isEmpty,
       "No checkpointed RDDs in state stream before first failure")
     stateStream.checkpointData.currentCheckpointFiles.foreach {
-      case (time, file) =>
-        assert(fs.exists(new Path(file)), "Checkpoint file '" + file +"' for time " + time +
+      case (event, file) =>
+        assert(fs.exists(new Path(file)), "Checkpoint file '" + file +"' for event " + event +
             " for state stream before first failure does not exist")
     }
 
@@ -283,9 +287,11 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     // Restart stream computation using the checkpoint file and check whether
     // checkpointed RDDs have been restored or not
     ssc = new StreamingContext(checkpointDir)
-    stateStream = ssc.graph.getOutputStreams().head.dependencies.head.dependencies.head
+    stateStream = ssc.graph.getOutputStreams().head
+      .dependencies.head.stream
+      .dependencies.head.stream
     logInfo("Restored data of state stream = \n[" + stateStream.generatedRDDs.mkString("\n") + "]")
-    assert(!stateStream.generatedRDDs.isEmpty,
+    assert(stateStream.generatedRDDs.nonEmpty,
       "No restored RDDs in state stream after recovery from first failure")
 
 
@@ -293,11 +299,11 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     // is present in the checkpoint data or not
     ssc.start()
     advanceTimeWithRealDelay(ssc, 1)
-    assert(!stateStream.checkpointData.currentCheckpointFiles.isEmpty,
+    assert(stateStream.checkpointData.currentCheckpointFiles.nonEmpty,
       "No checkpointed RDDs in state stream before second failure")
     stateStream.checkpointData.currentCheckpointFiles.foreach {
-      case (time, file) =>
-        assert(fs.exists(new Path(file)), "Checkpoint file '" + file +"' for time " + time +
+      case (event, file) =>
+        assert(fs.exists(new Path(file)), "Checkpoint file '" + file +"' for event " + event +
           " for state stream before seconds failure does not exist")
     }
     ssc.stop()
@@ -305,9 +311,11 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     // Restart stream computation from the new checkpoint file to see whether that file has
     // correct checkpoint data
     ssc = new StreamingContext(checkpointDir)
-    stateStream = ssc.graph.getOutputStreams().head.dependencies.head.dependencies.head
+    stateStream = ssc.graph.getOutputStreams().head
+      .dependencies.head.stream
+      .dependencies.head.stream
     logInfo("Restored data of state stream = \n[" + stateStream.generatedRDDs.mkString("\n") + "]")
-    assert(!stateStream.generatedRDDs.isEmpty,
+    assert(stateStream.generatedRDDs.nonEmpty,
       "No restored RDDs in state stream after recovery from second failure")
 
     // Adjust manual clock time as if it is being restarted after a delay; this is a hack because
@@ -328,7 +336,8 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     ssc = new StreamingContext(master, framework, batchDuration)
     val originalConf = ssc.conf
 
-    val cp = new Checkpoint(ssc, Time(1000))
+    val cp = new Checkpoint(ssc,
+      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1))
     val cpConf = cp.createSparkConf()
     assert(cpConf.get("spark.master") === originalConf.get("spark.master"))
     assert(cpConf.get("spark.app.name") === originalConf.get("spark.app.name"))
@@ -376,7 +385,8 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     assert(originalConf.get("spark.driver.host") === "localhost")
     assert(originalConf.get("spark.driver.port") === "9999")
 
-    val cp = new Checkpoint(ssc, Time(1000))
+    val cp = new Checkpoint(ssc,
+      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1))
     ssc.stop()
 
     // Serialize/deserialize to simulate write to storage and reading it back
@@ -625,8 +635,8 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     def recordedFiles(ssc: StreamingContext): Seq[Int] = {
       val fileInputDStream =
         ssc.graph.getInputStreams().head.asInstanceOf[FileInputDStream[_, _, _]]
-      val filenames = fileInputDStream.batchTimeToSelectedFiles.synchronized
-         { fileInputDStream.batchTimeToSelectedFiles.values.flatten }
+      val filenames = fileInputDStream.batchEventToSelectedFiles.synchronized
+         { fileInputDStream.batchEventToSelectedFiles.values.flatten }
       filenames.map(_.split(File.separator).last.toInt).toSeq.sorted
     }
 
@@ -820,10 +830,12 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
       new CheckpointWriter(jobGenerator, conf, checkpointDir, new Configuration())
     val bytes1 = Array.fill[Byte](10)(1)
     new checkpointWriter.CheckpointWriteHandler(
-      Time(2000), bytes1, clearCheckpointDataLater = false).run()
+      new TimerEvent(null, Time(2000), 2000 / batchDuration.milliseconds - 1),
+      bytes1, clearCheckpointDataLater = false).run()
     val bytes2 = Array.fill[Byte](10)(2)
     new checkpointWriter.CheckpointWriteHandler(
-      Time(1000), bytes2, clearCheckpointDataLater = true).run()
+      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1),
+      bytes2, clearCheckpointDataLater = true).run()
     val checkpointFiles = Checkpoint.getCheckpointFiles(checkpointDir).reverse.map { path =>
       new File(path.toUri)
     }
