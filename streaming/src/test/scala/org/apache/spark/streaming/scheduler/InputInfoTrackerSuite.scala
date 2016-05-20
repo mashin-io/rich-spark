@@ -17,6 +17,7 @@
 
 package org.apache.spark.streaming.scheduler
 
+import org.apache.spark.streaming.event.TimerEvent
 import org.scalatest.BeforeAndAfter
 
 import org.apache.spark.{SparkConf, SparkFunSuite}
@@ -45,35 +46,37 @@ class InputInfoTrackerSuite extends SparkFunSuite with BeforeAndAfter {
 
     val streamId1 = 0
     val streamId2 = 1
-    val time = Time(0L)
+    val event = new TimerEvent(null, Time(0L), 0)
     val inputInfo1 = StreamInputInfo(streamId1, 100L)
     val inputInfo2 = StreamInputInfo(streamId2, 300L)
-    inputInfoTracker.reportInfo(time, inputInfo1)
-    inputInfoTracker.reportInfo(time, inputInfo2)
+    inputInfoTracker.reportInfo(event, inputInfo1)
+    inputInfoTracker.reportInfo(event, inputInfo2)
 
-    val batchTimeToInputInfos = inputInfoTracker.getInfo(time)
-    assert(batchTimeToInputInfos.size == 2)
-    assert(batchTimeToInputInfos.keys === Set(streamId1, streamId2))
-    assert(batchTimeToInputInfos(streamId1) === inputInfo1)
-    assert(batchTimeToInputInfos(streamId2) === inputInfo2)
-    assert(inputInfoTracker.getInfo(time)(streamId1) === inputInfo1)
+    val batchEventToInputInfos = inputInfoTracker.getInfo(event)
+    assert(batchEventToInputInfos.size == 2)
+    assert(batchEventToInputInfos.keys === Set(streamId1, streamId2))
+    assert(batchEventToInputInfos(streamId1) === inputInfo1)
+    assert(batchEventToInputInfos(streamId2) === inputInfo2)
+    assert(inputInfoTracker.getInfo(event)(streamId1) === inputInfo1)
   }
 
   test("test cleanup InputInfo from InputInfoTracker") {
     val inputInfoTracker = new InputInfoTracker(ssc)
 
     val streamId1 = 0
+    val event1 = new TimerEvent(null, Time(0), 0)
+    val event2 = new TimerEvent(null, Time(1), 1)
     val inputInfo1 = StreamInputInfo(streamId1, 100L)
     val inputInfo2 = StreamInputInfo(streamId1, 300L)
-    inputInfoTracker.reportInfo(Time(0), inputInfo1)
-    inputInfoTracker.reportInfo(Time(1), inputInfo2)
+    inputInfoTracker.reportInfo(event1, inputInfo1)
+    inputInfoTracker.reportInfo(event2, inputInfo2)
 
     inputInfoTracker.cleanup(Time(0))
-    assert(inputInfoTracker.getInfo(Time(0))(streamId1) === inputInfo1)
-    assert(inputInfoTracker.getInfo(Time(1))(streamId1) === inputInfo2)
+    assert(inputInfoTracker.getInfo(event1)(streamId1) === inputInfo1)
+    assert(inputInfoTracker.getInfo(event2)(streamId1) === inputInfo2)
 
     inputInfoTracker.cleanup(Time(1))
-    assert(inputInfoTracker.getInfo(Time(0)).get(streamId1) === None)
-    assert(inputInfoTracker.getInfo(Time(1))(streamId1) === inputInfo2)
+    assert(inputInfoTracker.getInfo(event1).get(streamId1) === None)
+    assert(inputInfoTracker.getInfo(event2)(streamId1) === inputInfo2)
   }
 }
