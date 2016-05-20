@@ -17,15 +17,16 @@
 
 package org.apache.spark.streaming.api.java
 
-import scala.language.implicitConversions
-import scala.reflect.ClassTag
-
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.api.java.function.{Function => JFunction}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming.{Duration, Time}
+import org.apache.spark.streaming.Duration
 import org.apache.spark.streaming.dstream.DStream
+import org.apache.spark.streaming.event.Event
+
+import scala.language.implicitConversions
+import scala.reflect.ClassTag
 
 /**
  * A Java-friendly interface to [[org.apache.spark.streaming.dstream.DStream]], the basic
@@ -54,8 +55,8 @@ class JavaDStream[T](val dstream: DStream[T])(implicit val classTag: ClassTag[T]
   def persist(storageLevel: StorageLevel): JavaDStream[T] = dstream.persist(storageLevel)
 
   /** Generate an RDD for the given duration */
-  def compute(validTime: Time): JavaRDD[T] = {
-    dstream.compute(validTime) match {
+  def compute(event: Event): JavaRDD[T] = {
+    dstream.compute(event) match {
       case Some(rdd) => new JavaRDD(rdd)
       case None => null
     }
@@ -65,6 +66,7 @@ class JavaDStream[T](val dstream: DStream[T])(implicit val classTag: ClassTag[T]
    * Return a new DStream in which each RDD contains all the elements in seen in a
    * sliding window of time over this DStream. The new DStream generates RDDs with
    * the same interval as this DStream.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's interval.
    */
   def window(windowDuration: Duration): JavaDStream[T] =
@@ -73,6 +75,7 @@ class JavaDStream[T](val dstream: DStream[T])(implicit val classTag: ClassTag[T]
   /**
    * Return a new DStream in which each RDD contains all the elements in seen in a
    * sliding window of time over this DStream.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -84,6 +87,7 @@ class JavaDStream[T](val dstream: DStream[T])(implicit val classTag: ClassTag[T]
 
   /**
    * Return a new DStream by unifying data of another DStream with this DStream.
+   *
    * @param that Another DStream having the same interval (i.e., slideDuration) as this DStream.
    */
   def union(that: JavaDStream[T]): JavaDStream[T] =

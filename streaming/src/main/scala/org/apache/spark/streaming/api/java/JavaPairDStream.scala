@@ -17,28 +17,28 @@
 
 package org.apache.spark.streaming.api.java
 
-import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{List => JList}
-
-import scala.collection.JavaConverters._
-import scala.language.implicitConversions
-import scala.reflect.ClassTag
+import java.{lang => jl}
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapred.{JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat}
-
 import org.apache.spark.Partitioner
 import org.apache.spark.annotation.Experimental
-import org.apache.spark.api.java.{JavaPairRDD, JavaSparkContext, JavaUtils, Optional}
 import org.apache.spark.api.java.JavaPairRDD._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.api.java.function.{Function => JFunction, Function2 => JFunction2}
+import org.apache.spark.api.java.{JavaPairRDD, JavaSparkContext, JavaUtils, Optional}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.dstream.DStream
+import org.apache.spark.streaming.event.Event
+
+import scala.collection.JavaConverters._
+import scala.language.implicitConversions
+import scala.reflect.ClassTag
 
 /**
  * A Java-friendly interface to a DStream of key-value pairs, which provides extra methods
@@ -75,8 +75,8 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
   def repartition(numPartitions: Int): JavaPairDStream[K, V] = dstream.repartition(numPartitions)
 
   /** Method that generates a RDD for the given Duration */
-  def compute(validTime: Time): JavaPairRDD[K, V] = {
-    dstream.compute(validTime) match {
+  def compute(event: Event): JavaPairRDD[K, V] = {
+    dstream.compute(event) match {
       case Some(rdd) => new JavaPairRDD(rdd)
       case None => null
     }
@@ -85,6 +85,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
   /**
    * Return a new DStream which is computed based on windowed batches of this DStream.
    * The new DStream generates RDDs with the same interval as this DStream.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's interval.
    * @return
    */
@@ -93,6 +94,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
 
   /**
    * Return a new DStream which is computed based on windowed batches of this DStream.
+   *
    * @param windowDuration duration (i.e., width) of the window;
    *                   must be a multiple of this DStream's interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -104,6 +106,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
 
   /**
    * Return a new DStream by unifying data of another DStream with this DStream.
+   *
    * @param that Another DStream having the same interval (i.e., slideDuration) as this DStream.
    */
   def union(that: JavaPairDStream[K, V]): JavaPairDStream[K, V] =
@@ -195,6 +198,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * `DStream.groupByKey()` but applies it over a sliding window. The new DStream generates RDDs
    * with the same interval as this DStream. Hash partitioning is used to generate the RDDs with
    * Spark's default number of partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    */
@@ -206,6 +210,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new DStream by applying `groupByKey` over a sliding window. Similar to
    * `DStream.groupByKey()`, but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -221,6 +226,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -236,6 +242,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
   /**
    * Return a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -257,6 +264,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Similar to `DStream.reduceByKey()`, but applies it over a sliding window. The new DStream
    * generates RDDs with the same interval as this DStream. Hash partitioning is used to generate
    * the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -270,6 +278,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -289,6 +298,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with `numPartitions` partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -309,6 +319,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
   /**
    * Return a new DStream by applying `reduceByKey` over a sliding window. Similar to
    * `DStream.reduceByKey()`, but applies it over a sliding window.
+   *
    * @param reduceFunc associative rand commutative educe function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -335,6 +346,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * This is more efficient that reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
    * Hash partitioning is used to generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param invReduceFunc inverse function; such that for all y, invertible x:
    *                      `invReduceFunc(reduceFunc(x, y), x) = y`
@@ -361,6 +373,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * This is more efficient that reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param invReduceFunc inverse function
    * @param windowDuration width of the window; must be a multiple of this DStream's
@@ -398,6 +411,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    *  2. "inverse reduce" the old values that left the window (e.g., subtracting old counts)
    * This is more efficient that reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param invReduceFunc inverse function
    * @param windowDuration width of the window; must be a multiple of this DStream's
@@ -483,6 +497,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * Hash partitioning is used to generate the RDDs with Spark's default number of partitions.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @tparam S State type
@@ -497,6 +512,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param numPartitions Number of partitions of each RDD in the new DStream.
@@ -514,6 +530,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of the key.
    * org.apache.spark.Partitioner is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param partitioner Partitioner for controlling the partitioning of each RDD in the new
@@ -532,6 +549,7 @@ class JavaPairDStream[K, V](val dstream: DStream[(K, V)])(
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of the key.
    * org.apache.spark.Partitioner is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param partitioner Partitioner for controlling the partitioning of each RDD in the new
