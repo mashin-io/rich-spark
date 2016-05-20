@@ -19,18 +19,16 @@ package org.apache.spark.streaming
 
 import java.util.concurrent.ConcurrentLinkedQueue
 
-import scala.collection.JavaConverters._
-import scala.collection.mutable
-import scala.language.existentials
-import scala.reflect.ClassTag
-
-import org.apache.spark.{SparkConf, SparkException}
-import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.{BlockRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.dstream.{DStream, WindowedDStream}
+import org.apache.spark.streaming.event.Event
 import org.apache.spark.util.{Clock, ManualClock}
-import org.apache.spark.HashPartitioner
+import org.apache.spark.{HashPartitioner, SparkConf, SparkException}
+
+import scala.collection.mutable
+import scala.language.existentials
+import scala.reflect.ClassTag
 
 class BasicOperationsSuite extends TestSuiteBase {
   test("map") {
@@ -594,33 +592,34 @@ class BasicOperationsSuite extends TestSuiteBase {
     val operatedStream = runCleanupTest(conf, operation _,
       numExpectedOutput = cleanupTestInput.size / 2, rememberDuration = Seconds(3))
     val windowedStream2 = operatedStream.asInstanceOf[WindowedDStream[_]]
-    val windowedStream1 = windowedStream2.dependencies.head.asInstanceOf[WindowedDStream[_]]
-    val mappedStream = windowedStream1.dependencies.head
+    val windowedStream1 = windowedStream2.dependencies.head.stream.asInstanceOf[WindowedDStream[_]]
+    val mappedStream = windowedStream1.dependencies.head.stream
 
     // Checkpoint remember durations
     assert(windowedStream2.rememberDuration === rememberDuration)
-    assert(windowedStream1.rememberDuration === rememberDuration + windowedStream2.windowDuration)
-    assert(mappedStream.rememberDuration ===
-      rememberDuration + windowedStream2.windowDuration + windowedStream1.windowDuration)
+    assert(windowedStream1.rememberDuration ===
+      rememberDuration + batchDuration * windowedStream2.windowLength)
+    assert(mappedStream.rememberDuration === rememberDuration + batchDuration *
+        (windowedStream2.windowLength + windowedStream1.windowLength))
 
     // WindowedStream2 should remember till 7 seconds: 10, 9, 8, 7
     // WindowedStream1 should remember till 4 seconds: 10, 9, 8, 7, 6, 5, 4
     // MappedStream should remember till 2 seconds:    10, 9, 8, 7, 6, 5, 4, 3, 2
 
     // WindowedStream2
-    assert(windowedStream2.generatedRDDs.contains(Time(10000)))
-    assert(windowedStream2.generatedRDDs.contains(Time(8000)))
-    assert(!windowedStream2.generatedRDDs.contains(Time(6000)))
+    assert(windowedStream2.generatedRDDs.keys.exists(_.time == Time(10000)))
+    assert(windowedStream2.generatedRDDs.keys.exists(_.time == Time(8000)))
+    assert(!windowedStream2.generatedRDDs.keys.exists(_.time == Time(6000)))
 
     // WindowedStream1
-    assert(windowedStream1.generatedRDDs.contains(Time(10000)))
-    assert(windowedStream1.generatedRDDs.contains(Time(4000)))
-    assert(!windowedStream1.generatedRDDs.contains(Time(3000)))
+    assert(windowedStream1.generatedRDDs.keys.exists(_.time == Time(10000)))
+    assert(windowedStream1.generatedRDDs.keys.exists(_.time == Time(4000)))
+    assert(!windowedStream1.generatedRDDs.keys.exists(_.time == Time(3000)))
 
     // MappedStream
-    assert(mappedStream.generatedRDDs.contains(Time(10000)))
-    assert(mappedStream.generatedRDDs.contains(Time(2000)))
-    assert(!mappedStream.generatedRDDs.contains(Time(1000)))
+    assert(mappedStream.generatedRDDs.keys.exists(_.time == Time(10000)))
+    assert(mappedStream.generatedRDDs.keys.exists(_.time == Time(2000)))
+    assert(!mappedStream.generatedRDDs.keys.exists(_.time == Time(1000)))
   }
 
   test("rdd cleanup - updateStateByKey") {
@@ -631,8 +630,8 @@ class BasicOperationsSuite extends TestSuiteBase {
       conf, _.map(_ -> 1).updateStateByKey(updateFunc).checkpoint(Seconds(3)))
 
     assert(stateStream.rememberDuration === stateStream.checkpointDuration * 2)
-    assert(stateStream.generatedRDDs.contains(Time(10000)))
-    assert(!stateStream.generatedRDDs.contains(Time(4000)))
+    assert(stateStream.generatedRDDs.keys.exists(_.time == Time(10000)))
+    assert(!stateStream.generatedRDDs.keys.exists(_.time == Time(4000)))
   }
 
   test("rdd cleanup - input blocks and persisted RDDs") {
@@ -658,15 +657,15 @@ class BasicOperationsSuite extends TestSuiteBase {
         val clock = ssc.scheduler.clock.asInstanceOf[ManualClock]
         val input = Seq(1, 2, 3, 4, 5, 6)
 
-        val blockRdds = new mutable.HashMap[Time, BlockRDD[_]]
-        val persistentRddIds = new mutable.HashMap[Time, Int]
+        val blockRdds = new mutable.HashMap[Event, BlockRDD[_]]
+        val persistentRddIds = new mutable.HashMap[Event, Int]
 
         def collectRddInfo() { // get all RDD info required for verification
-          networkStream.generatedRDDs.foreach { case (time, rdd) =>
-            blockRdds(time) = rdd.asInstanceOf[BlockRDD[_]]
+          networkStream.generatedRDDs.foreach { case (event, rdd) =>
+            blockRdds(event) = rdd.asInstanceOf[BlockRDD[_]]
           }
-          mappedStream.generatedRDDs.foreach { case (time, rdd) =>
-            persistentRddIds(time) = rdd.id
+          mappedStream.generatedRDDs.foreach { case (event, rdd) =>
+            persistentRddIds(event) = rdd.id
           }
         }
 
@@ -691,8 +690,6 @@ class BasicOperationsSuite extends TestSuiteBase {
         assert(!outputQueue.isEmpty)
         assert(blockRdds.size > 0)
         assert(persistentRddIds.size > 0)
-
-        import Time._
 
         val latestPersistedRddId = persistentRddIds(persistentRddIds.keySet.max)
         val earliestPersistedRddId = persistentRddIds(persistentRddIds.keySet.min)
@@ -726,7 +723,7 @@ class BasicOperationsSuite extends TestSuiteBase {
       "Batch duration has changed from 1 second, check cleanup tests")
     withStreamingContext(setupStreams(cleanupTestInput, operation)) { ssc =>
       val operatedStream =
-        ssc.graph.getOutputStreams().head.dependencies.head.asInstanceOf[DStream[T]]
+        ssc.graph.getOutputStreams().head.dependencies.head.stream.asInstanceOf[DStream[T]]
       if (rememberDuration != null) ssc.remember(rememberDuration)
       val output = runStreams[(Int, Int)](ssc, cleanupTestInput.size, numExpectedOutput)
       val clock = ssc.scheduler.clock.asInstanceOf[Clock]
