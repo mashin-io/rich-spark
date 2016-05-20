@@ -17,6 +17,8 @@
 
 package org.apache.spark.streaming
 
+import org.apache.spark.streaming.event.TimerEvent
+
 import scala.util.Random
 
 import org.scalatest.BeforeAndAfterAll
@@ -32,6 +34,8 @@ import org.apache.spark.streaming.util.{WriteAheadLogRecordHandle, WriteAheadLog
 
 class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
 
+  val event = new TimerEvent(null, Time(0), 0)
+
   override def afterAll(): Unit = {
     try {
       StreamingContext.getActive().map { _.stop() }
@@ -41,7 +45,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
   }
 
   testWithoutWAL("createBlockRDD creates empty BlockRDD when no block info") { receiverStream =>
-    val rdd = receiverStream.createBlockRDD(Time(0), Seq.empty)
+    val rdd = receiverStream.createBlockRDD(event, Seq.empty)
     assert(rdd.isInstanceOf[BlockRDD[_]])
     assert(!rdd.isInstanceOf[WriteAheadLogBackedBlockRDD[_]])
     assert(rdd.isEmpty())
@@ -54,7 +58,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
     // Verify that there are some blocks that are present, and some that are not
     require(blockIds.forall(blockId => SparkEnv.get.blockManager.master.contains(blockId)))
 
-    val rdd = receiverStream.createBlockRDD(Time(0), blockInfos)
+    val rdd = receiverStream.createBlockRDD(event, blockInfos)
     assert(rdd.isInstanceOf[BlockRDD[_]])
     assert(!rdd.isInstanceOf[WriteAheadLogBackedBlockRDD[_]])
     val blockRDD = rdd.asInstanceOf[BlockRDD[_]]
@@ -72,7 +76,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
       require(blockIds.exists(blockId => SparkEnv.get.blockManager.master.contains(blockId)))
       require(blockIds.exists(blockId => !SparkEnv.get.blockManager.master.contains(blockId)))
 
-      val rdd = receiverStream.createBlockRDD(Time(0), blockInfos)
+      val rdd = receiverStream.createBlockRDD(event, blockInfos)
       assert(rdd.isInstanceOf[BlockRDD[_]])
       val blockRDD = rdd.asInstanceOf[BlockRDD[_]]
       assert(blockRDD.blockIds.toSeq === presentBlockInfos.map { _.blockId})
@@ -80,7 +84,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
 
   testWithWAL("createBlockRDD creates empty WALBackedBlockRDD when no block info") {
     receiverStream =>
-      val rdd = receiverStream.createBlockRDD(Time(0), Seq.empty)
+      val rdd = receiverStream.createBlockRDD(event, Seq.empty)
       assert(rdd.isInstanceOf[WriteAheadLogBackedBlockRDD[_]])
       assert(rdd.isEmpty())
   }
@@ -90,7 +94,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
     receiverStream =>
       val blockInfos = Seq.fill(5) { createBlockInfo(withWALInfo = true) }
       val blockIds = blockInfos.map(_.blockId)
-      val rdd = receiverStream.createBlockRDD(Time(0), blockInfos)
+      val rdd = receiverStream.createBlockRDD(event, blockInfos)
       assert(rdd.isInstanceOf[WriteAheadLogBackedBlockRDD[_]])
       val blockRDD = rdd.asInstanceOf[WriteAheadLogBackedBlockRDD[_]]
       assert(blockRDD.blockIds.toSeq === blockIds)
@@ -103,7 +107,7 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
       val blockInfos2 = Seq.fill(3) { createBlockInfo(withWALInfo = false) }
       val blockInfos = blockInfos1 ++ blockInfos2
       val blockIds = blockInfos.map(_.blockId)
-      val rdd = receiverStream.createBlockRDD(Time(0), blockInfos)
+      val rdd = receiverStream.createBlockRDD(event, blockInfos)
       assert(rdd.isInstanceOf[BlockRDD[_]])
       val blockRDD = rdd.asInstanceOf[BlockRDD[_]]
       assert(blockRDD.blockIds.toSeq === blockIds)
@@ -138,7 +142,8 @@ class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
 
   /**
    * Create a block info for input to the ReceiverInputDStream.createBlockRDD
-   * @param withWALInfo Create block with WAL info in it
+    *
+    * @param withWALInfo Create block with WAL info in it
    * @param createBlock Actually create the block in the BlockManager
    * @return
    */
