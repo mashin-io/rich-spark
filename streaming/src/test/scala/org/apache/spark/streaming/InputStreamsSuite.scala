@@ -23,6 +23,8 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
 
+import org.apache.spark.streaming.event.Event
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -404,7 +406,7 @@ class InputStreamsSuite extends TestSuiteBase with BeforeAndAfter {
 
         def stop() {}
 
-        def compute(validTime: Time): Option[RDD[String]] = None
+        def compute(event: Event): Option[RDD[String]] = None
       }
 
       class TestReceiverInputDStream extends ReceiverInputDStream[String](ssc) {
