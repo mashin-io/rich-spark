@@ -125,6 +125,9 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
         emptySet
       }
     boundStreams += stream
+    if (stream.graph == null) {
+      stream.setGraph(this)
+    }
   }
 
   def getInputStreams(): Array[InputDStream[_]] = this.synchronized { inputStreams.toArray }
