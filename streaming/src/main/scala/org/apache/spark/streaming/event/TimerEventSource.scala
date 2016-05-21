@@ -41,7 +41,7 @@ class TimerEventSource(
 
     require(period.milliseconds > 0, s"Period $period should be greater than 0.")
 
-    val currTime = Time(System.currentTimeMillis)
+    val currTime = Time(context.clock.getTimeMillis())
     if (startTime < currTime) {
       // if start time already elapsed, start from the next possible
       // period after current time
