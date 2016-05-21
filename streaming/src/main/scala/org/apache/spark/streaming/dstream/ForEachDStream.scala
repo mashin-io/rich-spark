@@ -25,7 +25,7 @@ import org.apache.spark.streaming.{Time, Dependency, Duration, EventDependency}
 import scala.reflect.ClassTag
 
 private[streaming] abstract class ForEachFunction[T, EventOrTime](
-    func: (RDD[T], EventOrTime) => Unit)
+    func: (RDD[T], EventOrTime) => Unit) extends Serializable
 private[streaming] case class ForEachFunctionWithEvent[T](
     func: (RDD[T], Event) => Unit) extends ForEachFunction[T, Event](func)
 private[streaming] case class ForEachFunctionWithTime[T](
