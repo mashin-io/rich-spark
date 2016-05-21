@@ -11,7 +11,8 @@ import org.apache.spark.util.ListenerBus
 abstract class Event(
     val eventSource: EventSource,
     val index: Long,
-    val time: Time = Time(System.currentTimeMillis)) {
+    val time: Time = Time(System.currentTimeMillis)
+  ) extends Serializable {
 
   val instanceId: Long = Event.nextInstanceId
 
