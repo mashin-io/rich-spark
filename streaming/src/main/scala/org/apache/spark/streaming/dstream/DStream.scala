@@ -236,7 +236,7 @@ abstract class DStream[T: ClassTag] (
   }
 
   private[streaming] def dependenciesAsStreamsIgnoreThis: List[DStream[_]] = {
-    dependencies.map(_.stream).distinct.filter(_ == this)
+    dependencies.map(_.stream).distinct.filter(_ != this)
   }
 
   private[streaming] def validateAtStart() {
