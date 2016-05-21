@@ -25,7 +25,7 @@ import org.apache.spark.streaming.{Time, Dependency, Duration, EventDependency}
 import scala.reflect.ClassTag
 
 private[streaming] abstract class TransformFunction[U, EventOrTime](
-    func: (Seq[RDD[_]], EventOrTime) => RDD[U])
+    func: (Seq[RDD[_]], EventOrTime) => RDD[U]) extends Serializable
 private[streaming] case class TransformFunctionWithEvent[U](
     func: (Seq[RDD[_]], Event) => RDD[U]) extends TransformFunction[U, Event](func)
 private[streaming] case class TransformFunctionWithTime[U](
