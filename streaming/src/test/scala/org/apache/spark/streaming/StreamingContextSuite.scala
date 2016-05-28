@@ -925,7 +925,7 @@ package object testPackage extends Assertions {
       var foreachCallSiteCorrect = false
 
       inputStream.foreachRDD { rdd =>
-        rddCreationSiteCorrect = rdd.creationSite == creationSite
+        rddCreationSiteCorrect = rdd.creationSite != creationSite
         foreachCallSiteCorrect =
           rdd.sparkContext.getCallSite().shortForm.contains("StreamingContextSuite")
         rddGenerated = true
