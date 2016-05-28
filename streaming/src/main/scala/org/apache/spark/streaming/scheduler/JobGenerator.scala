@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.event._
-import org.apache.spark.streaming.{Checkpoint, CheckpointWriter, Time}
+import org.apache.spark.streaming.{Milliseconds, Checkpoint, CheckpointWriter, Time}
 import org.apache.spark.util.{EventLoop, ManualClock}
 
 import scala.util.{Failure, Success, Try}
@@ -209,7 +209,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     val checkpointTime = ssc.initialCheckpoint.checkpointEvent.time
     val restartTime = Time(clock.getTimeMillis())
     val downTimeEvents = graph.eventSources.toSeq
-      .flatMap(_.between(checkpointTime, restartTime))
+      // events from `checkpointTime` until `restartTime`
+      .flatMap(_.between(checkpointTime, restartTime - Milliseconds(1)))
       .sorted(Event.ordering)
     logInfo("Batches during down time (" + downTimeEvents.size + " batches): ("
       + downTimeEvents.mkString("), (") + ")")
