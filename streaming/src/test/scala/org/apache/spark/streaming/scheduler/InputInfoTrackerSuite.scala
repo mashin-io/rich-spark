@@ -17,11 +17,11 @@
 
 package org.apache.spark.streaming.scheduler
 
-import org.apache.spark.streaming.event.TimerEvent
+import org.apache.spark.streaming.event.{TimerEventSource, TimerEvent}
 import org.scalatest.BeforeAndAfter
 
 import org.apache.spark.{SparkConf, SparkFunSuite}
-import org.apache.spark.streaming.{Duration, StreamingContext, Time}
+import org.apache.spark.streaming.{Seconds, Duration, StreamingContext, Time}
 
 class InputInfoTrackerSuite extends SparkFunSuite with BeforeAndAfter {
 
@@ -46,7 +46,8 @@ class InputInfoTrackerSuite extends SparkFunSuite with BeforeAndAfter {
 
     val streamId1 = 0
     val streamId2 = 1
-    val event = new TimerEvent(null, Time(0L), 0)
+    val timer = new TimerEventSource(null, Time(0), Time(1000), Seconds(1), "null-timer")
+    val event = new TimerEvent(timer, Time(0L), 0)
     val inputInfo1 = StreamInputInfo(streamId1, 100L)
     val inputInfo2 = StreamInputInfo(streamId2, 300L)
     inputInfoTracker.reportInfo(event, inputInfo1)
@@ -64,8 +65,9 @@ class InputInfoTrackerSuite extends SparkFunSuite with BeforeAndAfter {
     val inputInfoTracker = new InputInfoTracker(ssc)
 
     val streamId1 = 0
-    val event1 = new TimerEvent(null, Time(0), 0)
-    val event2 = new TimerEvent(null, Time(1), 1)
+    val timer = new TimerEventSource(null, Time(0), Time(1000), Seconds(1), "null-timer")
+    val event1 = new TimerEvent(timer, Time(0), 0)
+    val event2 = new TimerEvent(timer, Time(1), 1)
     val inputInfo1 = StreamInputInfo(streamId1, 100L)
     val inputInfo2 = StreamInputInfo(streamId1, 300L)
     inputInfoTracker.reportInfo(event1, inputInfo1)
