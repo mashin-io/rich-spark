@@ -143,7 +143,7 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
     // Get the previous state or create a new empty state RDD
     val prevStateRDD = prevStateAndDataRDDs(0)
-      .map(_.asInstanceOf[MapWithStateRDD[K, V, S, E]]) match {
+      .map(_.asInstanceOf[RDD[MapWithStateRDDRecord[K, S, E]]]) match {
       case Some(rdd) =>
         if (rdd.partitioner != Some(partitioner)) {
           // If the RDD is not partitioned the right way, let us repartition it using the
