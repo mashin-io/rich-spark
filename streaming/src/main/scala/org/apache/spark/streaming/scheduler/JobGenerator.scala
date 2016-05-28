@@ -187,7 +187,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first event */
   private def startFirstTime() {
     val startTime = Time(clock.getTimeMillis())
-    graph.start(startTime - graph.batchDuration)
+    graph.start(startTime)
     logInfo("Started JobGenerator at " + startTime)
   }
 
@@ -297,7 +297,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     markBatchFullyProcessed(event)
   }
 
-  /** Perform checkpoint for the give `event`. */
+  /** Perform checkpoint for the given `event`. */
   private def doCheckpoint(event: Event, clearCheckpointDataLater: Boolean) {
     if (shouldCheckpoint && (event.time - graph.zeroTime).isMultipleOf(ssc.checkpointDuration)) {
       logInfo("Checkpointing graph for event " + event)
