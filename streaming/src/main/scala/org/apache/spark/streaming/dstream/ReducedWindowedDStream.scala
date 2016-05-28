@@ -75,11 +75,12 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
       new TailDependency[(K, V)](reducedStream, newSkip, newLength, computeEvent = true))
   }
 
-  override def slideDuration: Duration = parent.slideDuration * windowLength
+  override def slideDuration: Duration = parent.slideDuration * slideLength
 
   override val mustCheckpoint = true
 
-  override def parentRememberDuration: Duration = rememberDuration + slideDuration
+  override def parentRememberDuration: Duration = rememberDuration +
+    parent.slideDuration * windowLength
 
   override def persist(storageLevel: StorageLevel): DStream[(K, V)] = {
     super.persist(storageLevel)
