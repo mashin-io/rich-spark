@@ -149,6 +149,14 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
     inputStreams.find(_.id == streamId).map(_.name)
   }
 
+  def deleteEvents(events: Seq[Event]) {
+    this.synchronized {
+      events.foreach(e =>
+        getBoundStreams(e.eventSource)
+          .foreach(_.deleteEvent(e)))
+    }
+  }
+
   def generateJobs(event: Event): Seq[Job] = {
     logDebug(s"Generating jobs for event $event")
     val jobs = this.synchronized {

@@ -220,6 +220,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     logInfo("Batches pending processing (" + pendingEvents.length + " batches): (" +
       pendingEvents.mkString("), (") + ")")
 
+    graph.deleteEvents(pendingEvents)
+
     // Reschedule jobs for these times
     val eventsToReschedule = (pendingEvents ++ downTimeEvents)
       .filter { _.time < restartTime }

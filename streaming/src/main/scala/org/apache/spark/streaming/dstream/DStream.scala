@@ -457,6 +457,13 @@ abstract class DStream[T: ClassTag] (
     }
   }
 
+  private[streaming] def deleteEvent(event: Event) {
+    if (!generatedRDDs.contains(event)) {
+      generatedEvents -= event
+    }
+    dependenciesAsStreamsIgnoreThis.foreach(_.deleteEvent(event))
+  }
+
   /**
    * Clear metadata that are older than `rememberDuration` of this DStream.
    * This is an internal method that should not be called directly. This default
