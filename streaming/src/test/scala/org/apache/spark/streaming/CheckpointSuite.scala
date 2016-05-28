@@ -237,7 +237,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
 
   test("basic rdd checkpoints + dstream graph checkpoint recovery") {
 
-    assert(batchDuration === Milliseconds(500), "batchDuration for this test must be 1 second")
+    assert(batchDuration === Milliseconds(500), "batchDuration for this test must be 0.5 second")
 
     conf.set("spark.streaming.clock", "org.apache.spark.util.ManualClock")
 
