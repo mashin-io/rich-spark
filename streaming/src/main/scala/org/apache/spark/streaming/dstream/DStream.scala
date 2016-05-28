@@ -85,6 +85,10 @@ abstract class DStream[T: ClassTag] (
   // Set of event sources this stream is bound to
   private[streaming] val boundEventSources = new mutable.HashSet[EventSource]
 
+  // List of events for which rdds had been generated
+  //TODO: Limit the storage of generatedEvents, How?
+  private[streaming] val generatedEvents = new mutable.TreeSet[Event]()(Event.ordering)
+
   // RDDs generated, marked as private[streaming] so that testsuites can access it
   @transient
   private[streaming] var generatedRDDs = new mutable.LinkedHashMap[Event, RDD[T]]()
@@ -365,6 +369,7 @@ abstract class DStream[T: ClassTag] (
             logInfo(s"Marking RDD ${newRDD.id} for time $event for checkpointing")
           }
           generatedRDDs.put(event, newRDD)
+          generatedEvents += event
         }
         rddOption
       } else {
