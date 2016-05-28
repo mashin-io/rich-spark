@@ -35,7 +35,8 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   private val inputStreams = new ArrayBuffer[InputDStream[_]]()
   private val outputStreams = new ArrayBuffer[DStream[_]]()
 
-  val eventSourceToBoundStreams = new ConcurrentHashMap[EventSource, mutable.HashSet[DStream[_]]]
+  val eventSourceToBoundStreams =
+    new ConcurrentHashMap[EventSource, mutable.LinkedHashSet[DStream[_]]]
 
   var rememberDuration: Duration = null
   var checkpointInProgress = false
@@ -120,7 +121,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def bind(stream: DStream[_], eventSource: EventSource) {
     val boundStreams = Option(eventSourceToBoundStreams.get(eventSource))
       .getOrElse {
-        val emptySet = mutable.HashSet.empty[DStream[_]]
+        val emptySet = mutable.LinkedHashSet.empty[DStream[_]]
         eventSourceToBoundStreams.put(eventSource, emptySet)
         emptySet
       }
@@ -141,7 +142,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   }
 
   def getBoundStreams(eventSource: EventSource): Seq[DStream[_]] = {
-    eventSourceToBoundStreams.getOrDefault(eventSource, mutable.HashSet.empty).toSeq
+    eventSourceToBoundStreams.getOrDefault(eventSource, mutable.LinkedHashSet.empty).toSeq
   }
 
   def getInputStreamName(streamId: Int): Option[String] = synchronized {
