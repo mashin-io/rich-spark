@@ -71,14 +71,14 @@ class DStreamCheckpointData[T: ClassTag](dstream: DStream[T])
    */
   def cleanup(event: Event) {
     // Get the time of the oldest checkpointed RDD that was written as part of the
-    // checkpoint of `time`
+    // checkpoint of `event`
     eventToOldestCheckpointFileEvent.remove(event) match {
       case Some(lastCheckpointFileEvent) =>
         // Find all the checkpointed RDDs (i.e. files) that are older than `lastCheckpointFileEvent`
         // This is because checkpointed RDDs older than this are not going to be needed
-        // even after master fails, as the checkpoint data of `time` does not refer to those files
+        // even after master fails, as the checkpoint data of `event` does not refer to those files
         val filesToDelete = eventToCheckpointFile.filter(_._1.time < lastCheckpointFileEvent.time)
-        logDebug(s"Files to delete:\n ${filesToDelete.mkString(",")}")
+        logDebug(s"Files to delete on event $event:\n ${filesToDelete.mkString(",")}")
         filesToDelete.foreach {
           case (oldEvent, file) =>
             try {
