@@ -75,8 +75,6 @@ private[streaming] class ReceivedBlockTracker(
   private val streamIdToAllocatedBlocks = new mutable.HashMap[Int, AllocatedBlocks]
   private val writeAheadLogOption = createWriteAheadLog()
 
-  private var lastAllocatedBatch: (Long, Int) = null
-
   // Recover block information from write ahead logs
   if (recoverFromWriteAheadLog) {
     recoverPastEvents()
@@ -109,12 +107,12 @@ private[streaming] class ReceivedBlockTracker(
    * This event will get written to the write ahead log (if enabled).
    */
   def allocateBlocksToBatchAndStream(batchEvent: Event, streamId: Int): Unit = synchronized {
-    if (lastAllocatedBatch == null || (batchEvent.instanceId, streamId) != lastAllocatedBatch) {
+    val allocatedBlocks = streamIdToAllocatedBlocks.getOrElseUpdate(streamId, new AllocatedBlocks)
+    val lastAllocatedBatch = allocatedBlocks.lastOption.map { case (event, blocks) => event }
+    if (lastAllocatedBatch.isEmpty || Event.ordering.gt(batchEvent, lastAllocatedBatch.get)) {
       val unallocatedBlocks = getReceivedBlockQueue(streamId).dequeueAll(x => true)
-      val allocatedBlocks = streamIdToAllocatedBlocks.getOrElseUpdate(streamId, new AllocatedBlocks)
       if (writeToLog(BatchAllocationEvent(streamId, batchEvent, unallocatedBlocks))) {
         allocatedBlocks.put(batchEvent, unallocatedBlocks)
-        lastAllocatedBatch = (batchEvent.instanceId, streamId)
       } else {
         logInfo(s"Possibly processed batch ($batchEvent, stream:$streamId)" +
           " needs to be processed again in WAL recovery")
@@ -143,7 +141,9 @@ private[streaming] class ReceivedBlockTracker(
   /** Get the blocks allocated to the given batch and stream. */
   def getBlocksOfBatchAndStream(batchEvent: Event, streamId: Int): Seq[ReceivedBlockInfo] = {
     synchronized {
-      streamIdToAllocatedBlocks.get(streamId).map(_.apply(batchEvent)).getOrElse(Seq.empty)
+      streamIdToAllocatedBlocks.get(streamId)
+        .map(_.getOrElse(batchEvent, Seq.empty))
+        .getOrElse(Seq.empty)
     }
   }
 
@@ -208,7 +208,6 @@ private[streaming] class ReceivedBlockTracker(
       streamIdToAllocatedBlocks
         .getOrElseUpdate(streamId, new AllocatedBlocks)
         .put(batchEvent, allocatedBlocks)
-      lastAllocatedBatch = (batchEvent.instanceId, streamId)
     }
 
     // Cleanup the batch allocations
