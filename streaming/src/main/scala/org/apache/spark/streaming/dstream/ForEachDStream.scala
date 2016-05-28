@@ -53,7 +53,7 @@ class ForEachDStream[T: ClassTag] (
 
   override def compute(event: Event): Option[RDD[T]] = {
     dependencies.head.rdds(event).headOption
-      .map(_.asInstanceOf[RDD[T]])
+      .map(_.asInstanceOf[RDD[T]].map(t => t))
   }
 
   override def generateJob(event: Event): Option[Job] = {
