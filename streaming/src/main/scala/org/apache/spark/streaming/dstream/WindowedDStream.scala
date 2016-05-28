@@ -45,9 +45,10 @@ class WindowedDStream[T: ClassTag](
     List(new TailDependency[T](parent, skipLength, windowLength, computeEvent = true))
   }
 
-  override def slideDuration: Duration = parent.slideDuration * windowLength
+  override def slideDuration: Duration = parent.slideDuration * slideLength
 
-  override def parentRememberDuration: Duration = rememberDuration + slideDuration
+  override def parentRememberDuration: Duration = rememberDuration +
+    parent.slideDuration * windowLength
 
   override def persist(level: StorageLevel): DStream[T] = {
     // Do not let this windowed DStream be persisted as windowed (union-ed) RDDs share underlying
