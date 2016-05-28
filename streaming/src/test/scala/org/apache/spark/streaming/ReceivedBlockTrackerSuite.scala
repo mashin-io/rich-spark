@@ -23,7 +23,7 @@ import java.nio.ByteBuffer
 import org.apache.hadoop.conf.Configuration
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.StreamBlockId
-import org.apache.spark.streaming.event.{Event, TimerEvent}
+import org.apache.spark.streaming.event.{TimerEventSource, Event, TimerEvent}
 import org.apache.spark.streaming.receiver.BlockManagerBasedStoreResult
 import org.apache.spark.streaming.scheduler._
 import org.apache.spark.streaming.util.WriteAheadLogSuite._
@@ -70,7 +70,9 @@ class ReceivedBlockTrackerSuite
     receivedBlockTracker.getUnallocatedBlocks(streamId) shouldEqual blockInfos
     receivedBlockTracker.hasUnallocatedReceivedBlocks should be (true)
 
-    val event1 = new TimerEvent(null, Time(0), 0)
+    val timer = new TimerEventSource(null, Time(0), Time(1), Seconds(1), "null-timer")
+
+    val event1 = new TimerEvent(timer, Time(0), 0)
 
     // Allocate the blocks to a batch and verify that all of them have been allocated
     receivedBlockTracker.allocateBlocksToBatchAndStream(event1, streamId)
@@ -79,7 +81,7 @@ class ReceivedBlockTrackerSuite
     receivedBlockTracker.getUnallocatedBlocks(streamId) shouldBe empty
     receivedBlockTracker.hasUnallocatedReceivedBlocks should be (false)
 
-    val event2 = new TimerEvent(null, Time(1), 1)
+    val event2 = new TimerEvent(timer, Time(1), 1)
 
     // Allocate no blocks to another batch
     receivedBlockTracker.allocateBlocksToBatchAndStream(event2, streamId)
@@ -153,10 +155,11 @@ class ReceivedBlockTrackerSuite
       block.isBlockIdValid() should be (false)
     }
 
+    val timer = new TimerEventSource(null, Time(0), Time(1), Seconds(1), "null-timer")
 
     // Allocate blocks to batch and verify whether the unallocated blocks got allocated
     val batchTime1 = manualClock.getTimeMillis()
-    val event1 = new TimerEvent(null, batchTime1, 0)
+    val event1 = new TimerEvent(timer, batchTime1, 0)
     tracker2.allocateBlocksToBatchAndStream(event1, streamId)
     tracker2.getBlocksOfBatchAndStream(event1, streamId) shouldEqual blockInfos1
     tracker2.getBlocksOfBatch(event1) shouldEqual Map(streamId -> blockInfos1)
@@ -164,7 +167,7 @@ class ReceivedBlockTrackerSuite
     // Add more blocks and allocate to another batch
     incrementTime()
     val batchTime2 = manualClock.getTimeMillis()
-    val event2 = new TimerEvent(null, batchTime2, 1)
+    val event2 = new TimerEvent(timer, batchTime2, 1)
     val blockInfos2 = addBlockInfos(tracker2)
     tracker2.allocateBlocksToBatchAndStream(event2, streamId)
     tracker2.getBlocksOfBatchAndStream(event2, streamId) shouldEqual blockInfos2
@@ -225,8 +228,9 @@ class ReceivedBlockTrackerSuite
     assert(getWriteAheadLogFiles().length === 0)
 
     // list of timestamps for files
+    val timer = new TimerEventSource(null, Time(0), Time(10000), Seconds(1), "null-timer")
     val t = Seq.tabulate(5)(i => i * 1000)
-    val e = t.zipWithIndex.map { case (t, i) => new TimerEvent(null, Time(t), i) }
+    val e = t.zipWithIndex.map { case (t, i) => new TimerEvent(timer, Time(t), i) }
 
     writeEventsManually(getLogFileName(t(0)), Seq(createBatchCleanup(e(0))))
     assert(getWriteAheadLogFiles().length === 1)
