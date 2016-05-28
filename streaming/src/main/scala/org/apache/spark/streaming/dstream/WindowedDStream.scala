@@ -60,8 +60,7 @@ class WindowedDStream[T: ClassTag](
 
   override def compute(event: Event): Option[RDD[T]] = {
     val rddsInWindow = dependencies.head.asInstanceOf[TailDependency[T]].rdds(event)
-    if (rddsInWindow.nonEmpty
-      && event.index > 0 && event.index % slideLength == 0) {
+    if (rddsInWindow.nonEmpty && (event.index + 1) % slideLength == 0) {
       Some(ssc.sc.union(rddsInWindow))
     } else {
       None
