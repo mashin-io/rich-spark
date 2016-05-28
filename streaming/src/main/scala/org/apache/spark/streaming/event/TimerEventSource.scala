@@ -59,7 +59,7 @@ class TimerEventSource(
 
   private def loop(): Unit = {
     val clock = context.clock
-    var index = 0
+    var index = ((nextTime - startTime) / period).toLong
     while (!stopped && nextTime <= endTime) {
       clock.waitTillTime(nextTime.milliseconds)
       post(TimerEvent(this, nextTime, index))
