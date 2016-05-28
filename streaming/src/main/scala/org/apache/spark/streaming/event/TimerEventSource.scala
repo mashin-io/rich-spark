@@ -86,7 +86,7 @@ class TimerEventSource(
   }
 
   override def toString(): String = {
-    s"TimerEventSource(name: $name, start: $startTime, end: $endTime, period: $period)"
+    s"Timer($name,s:$startTime,e:$endTime,p:$period)"
   }
 
 }
