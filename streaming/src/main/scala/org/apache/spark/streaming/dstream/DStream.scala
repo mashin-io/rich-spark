@@ -83,7 +83,7 @@ abstract class DStream[T: ClassTag] (
   // =======================================================================
 
   // Set of event sources this stream is bound to
-  private[streaming] var boundEventSources = new mutable.HashSet[EventSource]
+  private[streaming] val boundEventSources = new mutable.HashSet[EventSource]
 
   // RDDs generated, marked as private[streaming] so that testsuites can access it
   @transient
@@ -547,7 +547,6 @@ abstract class DStream[T: ClassTag] (
   private def readObject(ois: ObjectInputStream): Unit = Utils.tryOrIOException {
     logDebug(s"${this.getClass().getSimpleName}.readObject used")
     ois.defaultReadObject()
-    boundEventSources = new mutable.HashSet[EventSource]()
     generatedRDDs = new mutable.LinkedHashMap[Event, RDD[T]]()
   }
 
