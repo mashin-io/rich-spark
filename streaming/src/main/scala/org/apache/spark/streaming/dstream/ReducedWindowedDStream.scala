@@ -114,7 +114,7 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
         }
       }
 
-    if (event.index > 0 && event.index % slideLength == 0) {
+    if ((event.index + 1) % slideLength == 0) {
       // Get the RDDs of the reduced values in "old time steps"
       val oldRDDs = allRDDs(1)
       // Get the RDDs of the reduced values in "new time steps"
