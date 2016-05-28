@@ -8,6 +8,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.{Time, StreamingContext}
 import org.apache.spark.util.ListenerBus
 
+import scala.runtime.ScalaRunTime
+
 abstract class Event(
     val eventSource: EventSource,
     val index: Long,
@@ -16,11 +18,17 @@ abstract class Event(
 
   val instanceId: Long = Event.nextInstanceId
 
-  override def hashCode(): Int = instanceId.hashCode()
+  override def hashCode(): Int = {
+    ScalaRunTime._hashCode((eventSource.toProduct, index, time))
+  }
 
   override def equals(other: Any): Boolean = {
     other match {
-      case otherEvent: Event => instanceId == otherEvent.instanceId
+      case otherEvent: Event =>
+        (instanceId == otherEvent.instanceId) ||
+          (eventSource.equals(otherEvent.eventSource) &&
+            index == otherEvent.index &&
+            time.equals(otherEvent.time))
       case _ => false
     }
   }
@@ -69,5 +77,18 @@ abstract class EventSource(
   def stop()
 
   def between(from: Time, to: Time): Seq[Event] = Seq.empty
+
+  def toProduct: Product
+
+  override def hashCode(): Int = {
+    ScalaRunTime._hashCode(toProduct)
+  }
+
+  override def equals(obj: Any): Boolean = {
+    obj match {
+      case o: EventSource => ScalaRunTime._equals(toProduct, o.toProduct)
+      case _ => false
+    }
+  }
 
 }

@@ -85,6 +85,8 @@ class TimerEventSource(
       .map(t => TimerEvent(this, t, ((t - startTime) / period).toInt))
   }
 
+  override def toProduct: Product = (startTime, endTime, period, name)
+
   override def toString(): String = {
     s"Timer($name,s:$startTime,e:$endTime,p:$period)"
   }
