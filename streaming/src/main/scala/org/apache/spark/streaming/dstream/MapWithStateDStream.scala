@@ -121,7 +121,8 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
   override def slideDuration: Duration = parent.slideDuration
 
   override def dependencies: List[Dependency[_]] = {
-    List(new TailDependency[MapWithStateRDDRecord[K, S, E]](this, skip = 0, size = 1),
+    List(new TailDependency[MapWithStateRDDRecord[K, S, E]](
+      this, skip = 0, size = 1, computeEvent = false),
       new EventDependency[(K, V)](parent))
   }
 
@@ -138,8 +139,7 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
   /** Method that generates a RDD for the given time */
   override def compute(event: Event): Option[RDD[MapWithStateRDDRecord[K, S, E]]] = {
-    val prevStateAndDataRDDs = dependencies.zip(List(null, event))
-      .map { case (d, e) => d.rdds(e).headOption }
+    val prevStateAndDataRDDs = dependencies.map(_.rdds(event).headOption)
 
     // Get the previous state or create a new empty state RDD
     val prevStateRDD = prevStateAndDataRDDs(0)

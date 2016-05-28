@@ -22,10 +22,11 @@ class EventDependency[T: ClassTag](
 class TailDependency[T: ClassTag](
     override val stream: DStream[T],
     val skip: Int,
-    val size: Int
+    val size: Int,
+    val computeEvent: Boolean
   ) extends Dependency[T](stream) {
   override def rdds(event: Event): Seq[RDD[T]] = {
-    if (event != null) {
+    if (computeEvent) {
       stream.getOrCompute(event)
     }
     stream.generatedRDDs.values.dropRight(skip).takeRight(size).toSeq

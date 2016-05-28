@@ -17,14 +17,12 @@
 
 package org.apache.spark.streaming.dstream
 
+import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.streaming.{Duration, _}
 import org.apache.spark.streaming.event.Event
 
 import scala.reflect.ClassTag
-
-import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming._
-import org.apache.spark.streaming.Duration
 
 private[streaming]
 class WindowedDStream[T: ClassTag](
@@ -44,7 +42,7 @@ class WindowedDStream[T: ClassTag](
   def skipLength: Int = _skip
 
   override def dependencies: List[Dependency[_]] = {
-    List(new TailDependency[T](parent, skipLength, windowLength))
+    List(new TailDependency[T](parent, skipLength, windowLength, computeEvent = true))
   }
 
   override def slideDuration: Duration = parent.slideDuration * windowLength

@@ -38,7 +38,7 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
   super.persist(StorageLevel.MEMORY_ONLY_SER)
 
   override def dependencies: List[Dependency[_]] = {
-    List(new TailDependency[(K, S)](this, 0, 1),
+    List(new TailDependency[(K, S)](this, 0, 1, computeEvent = false),
       new EventDependency[(K, V)](parent))
   }
 
@@ -67,8 +67,7 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
 
   override def compute(event: Event): Option[RDD[(K, S)]] = {
 
-    val prevStateAndParentRDDs = dependencies.zip(List(null, event))
-      .map { case (d, e) => d.rdds(e).headOption }
+    val prevStateAndParentRDDs = dependencies.map(_.rdds(event).headOption)
     val prevStateRDDOption = prevStateAndParentRDDs(0).map(_.asInstanceOf[RDD[(K, S)]])
     val parentRDDOption = prevStateAndParentRDDs(1).map(_.asInstanceOf[RDD[(K, V)]])
 

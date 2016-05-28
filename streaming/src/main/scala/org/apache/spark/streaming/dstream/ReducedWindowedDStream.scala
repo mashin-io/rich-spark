@@ -70,9 +70,9 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
     val oldSkip = (curWindowSkip + windowLength) max prevWindowSkip
     val oldLength = newLength
 
-    List(new TailDependency[(K, V)](this, skip = 0, size = 1),
-      new TailDependency[(K, V)](reducedStream, oldSkip, oldLength),
-      new TailDependency[(K, V)](reducedStream, newSkip, newLength))
+    List(new TailDependency[(K, V)](this, skip = 0, size = 1, computeEvent = false),
+      new TailDependency[(K, V)](reducedStream, oldSkip, oldLength, computeEvent = true),
+      new TailDependency[(K, V)](reducedStream, newSkip, newLength, computeEvent = true))
   }
 
   override def slideDuration: Duration = parent.slideDuration * windowLength
@@ -97,12 +97,12 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
     val reduceF = reduceFunc
     val invReduceF = invReduceFunc
 
-    // Make the list of RDDs that needs to cogrouped together for reducing their reduced values
+    // Make the list of RDDs that needs to be cogrouped together for reducing their reduced values
     val allRDDs = dependencies.map(_.asInstanceOf[TailDependency[(K, V)]])
       .zipWithIndex.map { case (dependency, i) =>
         if (i == 0) {
           // Get the RDD of the reduced value of the previous window
-          val previousWindowRDD = dependency.rdds(null)
+          val previousWindowRDD = dependency.rdds(event)
           if (previousWindowRDD.isEmpty) {
             Seq(ssc.sc.makeRDD(Seq[(K, V)]()))
           } else {
