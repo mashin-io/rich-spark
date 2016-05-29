@@ -88,4 +88,8 @@ abstract class EventSource(
 
   override def toString(): String = name
 
+  final def map(f: Event => Event): EventSource = {
+    new MappedEventSource(this, f)
+  }
+
 }
