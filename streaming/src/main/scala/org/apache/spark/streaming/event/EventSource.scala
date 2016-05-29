@@ -17,7 +17,8 @@ trait EventListener extends Serializable {
 }
 
 abstract class EventSource(
-    @transient private[streaming] var ssc: StreamingContext
+    @transient private[streaming] var ssc: StreamingContext,
+    val name: String
   ) extends Logging with Serializable {
 
   private val listeners = new CopyOnWriteArrayList[EventListener]
@@ -81,5 +82,7 @@ abstract class EventSource(
       case _ => false
     }
   }
+
+  override def toString(): String = name
 
 }

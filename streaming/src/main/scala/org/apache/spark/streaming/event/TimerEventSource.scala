@@ -4,7 +4,7 @@ package org.apache.spark.streaming.event
 import org.apache.spark.streaming.{Duration, StreamingContext, Time}
 
 case class TimerEvent(source: EventSource, override val time: Time, override val index: Long)
-  extends Event(source, index)
+  extends Event(source, index, time)
 
 class TimerEventSource(
     @transient ssc: StreamingContext,
@@ -12,7 +12,7 @@ class TimerEventSource(
     private var endTime: Time,
     private var period: Duration,
     name: String
-  ) extends EventSource(ssc) {
+  ) extends EventSource(ssc, name) {
 
   private var stopped = false
   private var nextTime: Time = Time(-1)
