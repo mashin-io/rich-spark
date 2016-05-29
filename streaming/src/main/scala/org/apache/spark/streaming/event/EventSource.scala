@@ -34,6 +34,7 @@ abstract class EventSource(
 
   private[streaming] def setContext(ssc: StreamingContext): Unit = {
     this.ssc = ssc
+    dependencies.foreach(_.setContext(ssc))
   }
 
   def addListener(listener: EventListener): Unit = {
@@ -52,6 +53,8 @@ abstract class EventSource(
       }
     })
   }
+
+  def dependencies: List[EventSource] = List.empty
 
   def post(event: Event): Unit = {
     listeners.forEach(new Consumer[EventListener] {
