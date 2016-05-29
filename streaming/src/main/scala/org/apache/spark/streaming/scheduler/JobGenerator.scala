@@ -35,6 +35,8 @@ private[scheduler] case class DoCheckpoint(
     event: Event, clearCheckpointDataLater: Boolean) extends JobGeneratorEvent
 private[scheduler] case class ClearCheckpointData(event: Event) extends JobGeneratorEvent
 
+private[scheduler] trait JobGeneratorEventListener extends EventListener
+
 /**
  * This class generates jobs from DStreams as well as drives checkpointing and cleaning
  * up DStream metadata.
@@ -47,7 +49,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   private val graph = ssc.graph
   private val clock = ssc.clock
 
-  val eventBus: EventListenerBus = new EventListenerBus
+  private var jobGeneratorEventListener: JobGeneratorEventListener = null
 
   // This is marked lazy so that this is initialized after checkpoint duration has been set
   // in the context and the generator has been started.
@@ -84,11 +86,12 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
     eventLoop.start()
 
-    eventBus.addListener(new EventListener {
+    jobGeneratorEventListener = new JobGeneratorEventListener {
+      @transient val eventLoop: EventLoop[JobGeneratorEvent] = JobGenerator.this.eventLoop
       override def onEvent(event: Event) = {
         eventLoop.post(GenerateJobs(event))
       }
-    })
+    }
 
     if (ssc.isCheckpointPresent) {
       restart()
@@ -187,6 +190,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first event */
   private def startFirstTime() {
     val startTime = Time(clock.getTimeMillis())
+    graph.defaultTimer.addListener(jobGeneratorEventListener)
+    graph.eventSources.foreach(_.addListener(jobGeneratorEventListener))
     graph.start(startTime)
     logInfo("Started JobGenerator at " + startTime)
   }
@@ -203,6 +208,10 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
         manualClock.setTime(lastTime + jumpTime)
       case _ =>
     }
+
+    // remove old job generator listener first
+    graph.eventSources.foreach(_.removeListeners[JobGeneratorEventListener]())
+    graph.eventSources.foreach(_.addListener(jobGeneratorEventListener))
 
     // Batches when the master was down, that is,
     // between the checkpoint and current restart event

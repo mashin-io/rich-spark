@@ -54,7 +54,7 @@ class TimerEventSource(
       setDaemon(true)
       override def run() { loop() }
     }.start()
-    logDebug(s"Timer ($name) started, first timer event emits on $nextTime ms")
+    logDebug(s"Timer ($name) started, first timer event emits on $nextTime")
   }
 
   private def loop(): Unit = {
@@ -63,7 +63,7 @@ class TimerEventSource(
     while (!stopped && nextTime <= endTime) {
       clock.waitTillTime(nextTime.milliseconds)
       post(TimerEvent(this, nextTime, index))
-      logDebug(s"Timer ($name) event with time $nextTime ms and period index $index")
+      logDebug(s"Timer ($name) event with time $nextTime and period index $index")
       index += 1
       nextTime += period
     }

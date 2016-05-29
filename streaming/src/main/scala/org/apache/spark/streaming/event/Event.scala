@@ -41,12 +41,3 @@ private[streaming] object Event {
   implicit val ordering = Time.ordering.on((event: Event) => event.time)
 }
 
-trait EventListener {
-  def onEvent(event: Event)
-}
-
-private[streaming] class EventListenerBus extends ListenerBus[EventListener, Event] {
-  override def doPostEvent(listener: EventListener, event: Event): Unit = {
-    listener.onEvent(event)
-  }
-}
