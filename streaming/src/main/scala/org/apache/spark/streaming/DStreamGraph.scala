@@ -22,13 +22,14 @@ import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.dstream.{DStream, InputDStream, ReceiverInputDStream}
-import org.apache.spark.streaming.event.{Event, EventSource, TimerEventSource}
+import org.apache.spark.streaming.event.{EventListener, Event, EventSource, TimerEventSource}
 import org.apache.spark.streaming.scheduler.Job
 import org.apache.spark.util.Utils
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 final private[streaming] class DStreamGraph extends Serializable with Logging {
 
@@ -43,26 +44,28 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   var zeroTime: Time = null
   var startTime: Time = null
   var batchDuration: Duration = null
-  var defaultTimer: TimerEventSource = null
+  var defaultTimer: Option[TimerEventSource] = None
+  private val defaultTimerStreams = new ArrayBuffer[DStream[_]]()
+  private val defaultTimerListeners = new ArrayBuffer[EventListener]()
 
   def eventSources = {
     eventSourceToBoundStreams.keySet().toSet
   }
 
-  def start(time: Time) {
+  def start(time: Time, ssc: StreamingContext) {
     this.synchronized {
       require(zeroTime == null, "DStream graph computation already started")
       zeroTime = time
       startTime = time
 
-      // set defaultTimer start time, as a result its hashcode changes,
-      // so it should be removed from and put to all hash based collections
-      // TODO: should make timer event source immutable
-      val defaultTimerStreams = eventSourceToBoundStreams.remove(defaultTimer)
-      defaultTimerStreams.foreach(_.boundEventSources -= defaultTimer)
-      defaultTimer.setStartTime(time + batchDuration)
-      defaultTimerStreams.foreach(_.boundEventSources += defaultTimer)
-      eventSourceToBoundStreams.put(defaultTimer, defaultTimerStreams)
+      // initialize the default timer
+      val timer = ssc.timer(time + batchDuration, Time(Long.MaxValue),
+        batchDuration, "DefaultTimer")
+      defaultTimer = Some(timer)
+      defaultTimerStreams.foreach(_.bind(timer))
+      defaultTimerStreams.clear()
+      defaultTimerListeners.foreach(timer.addListener)
+      defaultTimerListeners.clear()
 
       val outputStreams = getOutputStreams()
       outputStreams.foreach(_.initialize(zeroTime))
@@ -94,12 +97,11 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
     }
   }
 
-  def setBatchDuration(duration: Duration, ssc: StreamingContext) {
+  def setBatchDuration(duration: Duration) {
     this.synchronized {
       require(batchDuration == null,
         s"Batch duration already set as $batchDuration. Cannot set it again.")
       batchDuration = duration
-      defaultTimer = ssc.timer(Time(0), Time(Long.MaxValue), batchDuration, "DefaultTimer")
     }
   }
 
@@ -118,6 +120,26 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
     }
   }
 
+  def addEventListener(listener: EventListener) {
+    eventSources.foreach(_.addListener(listener))
+    if (defaultTimer.isEmpty) {
+      this.synchronized {
+        defaultTimerListeners += listener
+      }
+    }
+  }
+
+  def removeEventListener[T <: EventListener : ClassTag]() {
+    eventSources.foreach(_.removeListeners[T]())
+    if (defaultTimer.isEmpty) {
+      this.synchronized {
+        val c = implicitly[ClassTag[T]].runtimeClass
+        val listenersToDrop = defaultTimerListeners.filter(l => c.isAssignableFrom(l.getClass))
+        defaultTimerListeners --= listenersToDrop
+      }
+    }
+  }
+
   def bind(stream: DStream[_], eventSource: EventSource) {
     val boundStreams = Option(eventSourceToBoundStreams.get(eventSource))
       .getOrElse {
@@ -131,10 +153,22 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
     }
   }
 
+  def bind(stream: DStream[_]) {
+    defaultTimer match {
+      case Some(timer) => bind(stream, timer)
+      case _ => this.synchronized {
+        defaultTimerStreams += stream
+        if (stream.graph == null) {
+          stream.setGraph(this)
+        }
+      }
+    }
+  }
+
   def getInputStreams(): Array[InputDStream[_]] = this.synchronized { inputStreams.toArray }
 
   def getOutputStreams(): Array[DStream[_]] = {
-    eventSourceToBoundStreams.values.flatten.toArray.distinct
+    (eventSourceToBoundStreams.values.flatten.toArray ++ defaultTimerStreams).distinct
   }
 
   def getReceiverInputStreams(): Array[ReceiverInputDStream[_]] = this.synchronized {
@@ -210,7 +244,8 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
       require(batchDuration != null, "Batch duration has not been set")
       // assert(batchDuration >= Milliseconds(100), "Batch duration of " + batchDuration +
       // " is very low")
-      require(getOutputStreams().nonEmpty, "No output operations registered, so nothing to execute")
+      require((getOutputStreams() ++ defaultTimerStreams).nonEmpty,
+        "No output operations registered, so nothing to execute")
     }
   }
 

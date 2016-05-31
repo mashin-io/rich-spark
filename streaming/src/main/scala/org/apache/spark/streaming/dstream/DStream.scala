@@ -937,9 +937,9 @@ abstract class DStream[T: ClassTag] (
     logInfo(s"Slicing from $fromTime to $toTime" +
       s" (aligned to $alignedFromTime and $alignedToTime)")
 
-    graph.defaultTimer.between(alignedFromTime, alignedToTime).flatMap { timerEvent =>
+    graph.defaultTimer.map(_.between(alignedFromTime, alignedToTime).flatMap { timerEvent =>
       if (timerEvent.time >= zeroTime) getOrCompute(timerEvent) else None
-    }
+    }).getOrElse(Seq.empty)
   }
 
   /**
@@ -979,7 +979,11 @@ abstract class DStream[T: ClassTag] (
    * DStream will be generated.
    */
   private[streaming] def register(): DStream[T] = {
-    bind(ssc.graph.defaultTimer)
+    ssc.graph.defaultTimer match {
+      case Some(timer) => bind(timer)
+      case _ => ssc.graph.bind(this)
+    }
+    this
   }
 }
 

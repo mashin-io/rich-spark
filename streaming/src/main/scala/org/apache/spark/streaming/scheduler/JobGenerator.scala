@@ -190,8 +190,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first event */
   private def startFirstTime() {
     val startTime = Time(clock.getTimeMillis())
-    graph.eventSources.foreach(_.addListener(jobGeneratorEventListener))
-    graph.start(startTime)
+    graph.addEventListener(jobGeneratorEventListener)
+    graph.start(startTime, ssc)
     logInfo("Started JobGenerator at " + startTime)
   }
 
@@ -209,8 +209,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
 
     // remove old job generator listener first
-    graph.eventSources.foreach(_.removeListeners[JobGeneratorEventListener]())
-    graph.eventSources.foreach(_.addListener(jobGeneratorEventListener))
+    graph.removeEventListener[JobGeneratorEventListener]()
+    graph.addEventListener(jobGeneratorEventListener)
 
     // Batches when the master was down, that is,
     // between the checkpoint and current restart event

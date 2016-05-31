@@ -8,32 +8,14 @@ case class TimerEvent(source: EventSource, override val time: Time, override val
 
 class TimerEventSource(
     @transient ssc: StreamingContext,
-    private var startTime: Time,
-    private var endTime: Time,
-    private var period: Duration,
+    startTime: Time,
+    endTime: Time,
+    period: Duration,
     name: String
   ) extends EventSource(ssc, name) {
 
   private var stopped = false
   private var nextTime: Time = Time(-1)
-
-  def getStartTime: Time = startTime.copy()
-
-  def getEndTime: Time = endTime.copy()
-
-  def getPeriod: Duration = period.copy()
-
-  def setStartTime(time: Time) {
-    startTime = time
-  }
-
-  def setEndTime(time: Time) {
-    endTime = time
-  }
-
-  def setPeriod(period: Duration) {
-    this.period = period
-  }
 
   override def start(): Unit = synchronized {
     require(startTime < endTime,

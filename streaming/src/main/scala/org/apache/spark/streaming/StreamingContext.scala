@@ -179,7 +179,7 @@ class StreamingContext private[streaming] (
     } else {
       require(_batchDur != null, "Batch duration for StreamingContext cannot be null")
       val newGraph = new DStreamGraph()
-      newGraph.setBatchDuration(_batchDur, this)
+      newGraph.setBatchDuration(_batchDur)
       newGraph
     }
   }

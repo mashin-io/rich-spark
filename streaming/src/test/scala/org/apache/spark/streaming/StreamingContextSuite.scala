@@ -108,7 +108,7 @@ class StreamingContextSuite extends SparkFunSuite with BeforeAndAfter with Timeo
     addInputStream(ssc1).register()
     ssc1.start()
     val cp = new Checkpoint(ssc1, new TimerEvent(
-      ssc1.graph.defaultTimer, Time(1000), 1000 / batchDuration.milliseconds - 1))
+      ssc1.graph.defaultTimer.get, Time(1000), 1000 / batchDuration.milliseconds - 1))
     assert(
       Utils.timeStringAsSeconds(cp.sparkConfPairs
           .toMap.getOrElse("spark.dummyTimeConfig", "-1")) === 10)

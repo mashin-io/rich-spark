@@ -93,7 +93,7 @@ class JobGeneratorSuite extends TestSuiteBase {
       // Get the blocks belonging to a batch
       def getBlocksOfBatch(batchTime: Long): Seq[ReceivedBlockInfo] = {
         receiverTracker.getBlocksOfBatchAndStream(
-          new TimerEvent(ssc.graph.defaultTimer,
+          new TimerEvent(ssc.graph.defaultTimer.get,
             Time(batchTime),
             (batchTime / batchDuration.milliseconds) - 1),
           inputStream.id)

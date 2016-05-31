@@ -52,8 +52,8 @@ class DStreamScopeSuite extends SparkFunSuite with BeforeAndAfter with BeforeAnd
   after { assertPropertiesNotSet() }
 
   def timerEvent(time: Time): TimerEvent = {
-    new TimerEvent(ssc.graph.defaultTimer, time,
-      time.milliseconds / batchDuration.milliseconds - 1)
+    new TimerEvent(ssc.timer(Time(0), Time(Long.MaxValue), batchDuration, "DefaultTimer"),
+      time, time.milliseconds / batchDuration.milliseconds - 1)
   }
 
   test("dstream without scope") {
