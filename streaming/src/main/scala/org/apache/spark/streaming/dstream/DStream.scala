@@ -979,8 +979,7 @@ abstract class DStream[T: ClassTag] (
    * DStream will be generated.
    */
   private[streaming] def register(): DStream[T] = {
-    ssc.graph.addOutputStream(this)
-    this
+    bind(ssc.graph.defaultTimer)
   }
 }
 

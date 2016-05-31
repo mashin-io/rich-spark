@@ -33,7 +33,6 @@ import scala.collection.mutable.ArrayBuffer
 final private[streaming] class DStreamGraph extends Serializable with Logging {
 
   private val inputStreams = new ArrayBuffer[InputDStream[_]]()
-  private val outputStreams = new ArrayBuffer[DStream[_]]()
 
   val eventSourceToBoundStreams =
     new ConcurrentHashMap[EventSource, mutable.LinkedHashSet[DStream[_]]]
@@ -55,12 +54,20 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
       require(zeroTime == null, "DStream graph computation already started")
       zeroTime = time
       startTime = time
+
+      // set defaultTimer start time, as a result its hashcode changes,
+      // so it should be removed from and put to all hash based collections
+      // TODO: should make timer event source immutable
+      val defaultTimerStreams = eventSourceToBoundStreams.remove(defaultTimer)
+      defaultTimerStreams.foreach(_.boundEventSources -= defaultTimer)
       defaultTimer.setStartTime(time + batchDuration)
+      defaultTimerStreams.foreach(_.boundEventSources += defaultTimer)
+      eventSourceToBoundStreams.put(defaultTimer, defaultTimerStreams)
+
+      val outputStreams = getOutputStreams()
       outputStreams.foreach(_.initialize(zeroTime))
       outputStreams.foreach(_.remember(rememberDuration))
       outputStreams.foreach(_.validateAtStart)
-      outputStreams.filter(_.boundEventSources.isEmpty)
-        .foreach(_.bind(defaultTimer))
       inputStreams.par.foreach(_.start())
       eventSources.par.foreach(_.start())
     }
@@ -83,7 +90,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def setContext(ssc: StreamingContext) {
     this.synchronized {
       eventSources.foreach(_.setContext(ssc))
-      outputStreams.foreach(_.setContext(ssc))
+      getOutputStreams().foreach(_.setContext(ssc))
     }
   }
 
@@ -111,13 +118,6 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
     }
   }
 
-  def addOutputStream(outputStream: DStream[_]) {
-    this.synchronized {
-      outputStream.setGraph(this)
-      outputStreams += outputStream
-    }
-  }
-
   def bind(stream: DStream[_], eventSource: EventSource) {
     val boundStreams = Option(eventSourceToBoundStreams.get(eventSource))
       .getOrElse {
@@ -133,7 +133,9 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
 
   def getInputStreams(): Array[InputDStream[_]] = this.synchronized { inputStreams.toArray }
 
-  def getOutputStreams(): Array[DStream[_]] = this.synchronized { outputStreams.toArray }
+  def getOutputStreams(): Array[DStream[_]] = {
+    eventSourceToBoundStreams.values.flatten.toArray.distinct
+  }
 
   def getReceiverInputStreams(): Array[ReceiverInputDStream[_]] = this.synchronized {
     inputStreams.filter(_.isInstanceOf[ReceiverInputDStream[_]])
@@ -174,7 +176,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def clearMetadata(event: Event) {
     logDebug("Clearing metadata for event " + event)
     this.synchronized {
-      outputStreams.foreach(_.clearMetadata(event))
+      getOutputStreams().foreach(_.clearMetadata(event))
     }
     logDebug("Cleared old metadata for event " + event)
   }
@@ -182,7 +184,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def updateCheckpointData(event: Event) {
     logInfo("Updating checkpoint data for event " + event)
     this.synchronized {
-      outputStreams.foreach(_.updateCheckpointData(event))
+      getOutputStreams().foreach(_.updateCheckpointData(event))
     }
     logInfo("Updated checkpoint data for event " + event)
   }
@@ -190,7 +192,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def clearCheckpointData(event: Event) {
     logInfo("Clearing checkpoint data for event " + event)
     this.synchronized {
-      outputStreams.foreach(_.clearCheckpointData(event))
+      getOutputStreams().foreach(_.clearCheckpointData(event))
     }
     logInfo("Cleared checkpoint data for event " + event)
   }
@@ -198,7 +200,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def restoreCheckpointData() {
     logInfo("Restoring checkpoint data")
     this.synchronized {
-      outputStreams.foreach(_.restoreCheckpointData())
+      getOutputStreams().foreach(_.restoreCheckpointData())
     }
     logInfo("Restored checkpoint data")
   }

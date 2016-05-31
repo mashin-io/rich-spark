@@ -190,7 +190,6 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first event */
   private def startFirstTime() {
     val startTime = Time(clock.getTimeMillis())
-    graph.defaultTimer.addListener(jobGeneratorEventListener)
     graph.eventSources.foreach(_.addListener(jobGeneratorEventListener))
     graph.start(startTime)
     logInfo("Started JobGenerator at " + startTime)
