@@ -819,7 +819,7 @@ abstract class DStream[T: ClassTag] (
    * Print the first ten elements of each RDD generated in this DStream. This is an output
    * operator, so this DStream will be registered as an output stream and there materialized.
    */
-  def print(): Unit = ssc.withScope {
+  def print(): DStream[T] = ssc.withScope {
     print(10)
   }
 
@@ -827,13 +827,13 @@ abstract class DStream[T: ClassTag] (
    * Print the first num elements of each RDD generated in this DStream. This is an output
    * operator, so this DStream will be registered as an output stream and there materialized.
    */
-  def print(num: Int): Unit = ssc.withScope {
-    def foreachFunc: (RDD[T], Time) => Unit = {
-      (rdd: RDD[T], time: Time) => {
+  def print(num: Int): DStream[T] = ssc.withScope {
+    def foreachFunc: (RDD[T], Event) => Unit = {
+      (rdd: RDD[T], event: Event) => {
         val firstNum = rdd.take(num + 1)
         // scalastyle:off println
         println("-------------------------------------------")
-        println(s"Time: $time")
+        println(s"Event: $event")
         println("-------------------------------------------")
         firstNum.take(num).foreach(println)
         if (firstNum.length > num) println("...")
