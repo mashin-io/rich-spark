@@ -644,19 +644,21 @@ abstract class DStream[T: ClassTag] (
   }
 
   /**
-   * Apply a function to each RDD in this DStream. This is an output operator, so
-   * 'this' DStream will be registered as an output stream and therefore materialized.
+   * Return an identity map of 'this' DStream to which a function is applied to each RDD.
+   * This is an output operator, so the new DStream will be registered as an output stream
+   * and therefore materialized.
    */
-  def foreachRDD(foreachFunc: RDD[T] => Unit): Unit = ssc.withScope {
+  def foreachRDD(foreachFunc: RDD[T] => Unit): DStream[T] = ssc.withScope {
     val cleanedF = context.sparkContext.clean(foreachFunc, false)
     foreachRDD((r: RDD[T], _: Time) => cleanedF(r), displayInnerRDDOps = true)
   }
 
   /**
-   * Apply a function to each RDD in this DStream. This is an output operator, so
-   * 'this' DStream will be registered as an output stream and therefore materialized.
+   * Return an identity map of 'this' DStream to which a function is applied to each RDD.
+   * This is an output operator, so the new DStream will be registered as an output stream
+   * and therefore materialized.
    */
-  def foreachRDD(foreachFunc: (RDD[T], Time) => Unit): Unit = ssc.withScope {
+  def foreachRDD(foreachFunc: (RDD[T], Time) => Unit): DStream[T] = ssc.withScope {
     // because the DStream is reachable from the outer object here, and because
     // DStreams can't be serialized with closures, we can't proactively check
     // it for serializability and so we pass the optional false to SparkContext.clean
@@ -664,8 +666,9 @@ abstract class DStream[T: ClassTag] (
   }
 
   /**
-   * Apply a function to each RDD in this DStream. This is an output operator, so
-   * 'this' DStream will be registered as an output stream and therefore materialized.
+   * Return an identity map of 'this' DStream to which a function is applied to each RDD.
+   * This is an output operator, so the new DStream will be registered as an output stream
+   * and therefore materialized.
    *
    * @param foreachFunc foreachRDD function
    * @param displayInnerRDDOps Whether the detailed callsites and scopes of the RDDs generated
@@ -675,9 +678,40 @@ abstract class DStream[T: ClassTag] (
    */
   private def foreachRDD(
       foreachFunc: (RDD[T], Time) => Unit,
-      displayInnerRDDOps: Boolean): Unit = {
+      displayInnerRDDOps: Boolean): DStream[T] = {
     new ForEachDStream(this,
       ForEachFunctionWithTime(context.sparkContext.clean(foreachFunc, false)),
+      displayInnerRDDOps).register()
+  }
+
+  /**
+   * Return an identity map of 'this' DStream to which a function is applied to each RDD.
+   * This is an output operator, so the new DStream will be registered as an output stream
+   * and therefore materialized.
+   */
+  def foreachRDD(foreachFunc: (RDD[T], Event) => Unit): DStream[T] = ssc.withScope {
+    // because the DStream is reachable from the outer object here, and because
+    // DStreams can't be serialized with closures, we can't proactively check
+    // it for serializability and so we pass the optional false to SparkContext.clean
+    foreachRDD(foreachFunc, displayInnerRDDOps = true)
+  }
+
+  /**
+   * Return an identity map of 'this' DStream to which a function is applied to each RDD.
+   * This is an output operator, so the new DStream will be registered as an output stream
+   * and therefore materialized.
+   *
+   * @param foreachFunc foreachRDD function
+   * @param displayInnerRDDOps Whether the detailed callsites and scopes of the RDDs generated
+   *                           in the `foreachFunc` to be displayed in the UI. If `false`, then
+   *                           only the scopes and callsites of `foreachRDD` will override those
+   *                           of the RDDs on the display.
+   */
+  private def foreachRDD(
+      foreachFunc: (RDD[T], Event) => Unit,
+      displayInnerRDDOps: Boolean): DStream[T] = {
+    new ForEachDStream(this,
+      ForEachFunctionWithEvent(context.sparkContext.clean(foreachFunc, false)),
       displayInnerRDDOps).register()
   }
 
