@@ -34,8 +34,43 @@ class TailDependency[T: ClassTag](
     }
 
     events.dropRight(skip).takeRight(size)
-      .map(e => stream.getOrCompute(e))
+      .map(stream.getOrCompute)
       .filter(_.nonEmpty).map(_.get).toSeq
     //Some(stream.ssc.sc.union(tailRDDs.toSeq))
+  }
+}
+
+class TimeWindowDependency[T: ClassTag](
+    override val stream: DStream[T],
+    val zeroTime: Time,
+    val windowDuration: Duration,
+    val slideDuration: Duration
+  ) extends Dependency[T](stream) {
+  override def rdds(event: Event): Seq[RDD[T]] = {
+    stream.getOrCompute(event)
+
+    val windowEnd = prevWindowEnd(event)
+    val windowStart = windowEnd - windowDuration + slideDuration
+
+    stream.generatedEvents
+      .filter(e => e.time >= windowStart && e.time <= windowEnd)
+      .map(stream.getOrCompute)
+      .filter(_.nonEmpty).map(_.get).toSeq
+  }
+
+  /**
+   * Return the end time of the window occurring before the given event.
+   */
+  def prevWindowEnd(event: Event): Time = {
+    zeroTime + slideDuration * ((event.time - zeroTime) / slideDuration).toInt
+  }
+
+  /**
+   * Return the sequence of events at the end and after the window
+   * occurring before the given event.
+   */
+  def eventsAfterPrevWindow(event: Event): Seq[Event] = {
+    val windowEnd = prevWindowEnd(event)
+    stream.generatedEvents.filter(_.time >= windowEnd).toSeq
   }
 }
