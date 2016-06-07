@@ -29,8 +29,8 @@ class WindowedDStream[T: ClassTag](
     parent: DStream[T],
     _window: Int,
     _slide: Int,
-    _skip: Int)
-  extends DStream[T](parent.ssc) {
+    _skip: Int
+  ) extends DStream[T](parent.ssc) {
 
   // Persist parent level by default, as those RDDs are going to be obviously reused.
   parent.persist(StorageLevel.MEMORY_ONLY_SER)
