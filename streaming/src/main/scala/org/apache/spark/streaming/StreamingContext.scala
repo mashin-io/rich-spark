@@ -545,8 +545,9 @@ class StreamingContext private[streaming] (
    */
   def transform[T: ClassTag](
       dstreams: Seq[DStream[_]],
-      transformFunc: (Seq[RDD[_]], Event) => RDD[T]
-    ): DStream[T] = withScope {
+      transformFunc: (Seq[RDD[_]], Event) => RDD[T])
+      (implicit dummyImplicit: DummyImplicit)
+    : DStream[T] = withScope {
     new TransformedDStream[T](dstreams,
       TransformFunctionWithEvent[T](sparkContext.clean(transformFunc)))
   }

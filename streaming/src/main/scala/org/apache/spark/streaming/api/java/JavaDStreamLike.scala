@@ -277,7 +277,7 @@ trait JavaDStreamLike[T, This <: JavaDStreamLike[T, This, R], R <: JavaRDDLike[T
    * 'this' DStream will be registered as an output stream and therefore materialized.
    */
   def foreachRDD(foreachFunc: JVoidFunction2[R, Time]) {
-    dstream.foreachRDD((rdd, time) => foreachFunc.call(wrapRDD(rdd), time))
+    dstream.foreachRDD((rdd: RDD[T], time: Time) => foreachFunc.call(wrapRDD(rdd), time))
   }
 
   /**

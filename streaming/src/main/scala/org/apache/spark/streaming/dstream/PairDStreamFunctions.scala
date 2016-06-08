@@ -131,6 +131,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * `DStream.groupByKey()` but applies it over a sliding window. The new DStream generates RDDs
    * with the same interval as this DStream. Hash partitioning is used to generate the RDDs with
    * Spark's default number of partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    */
@@ -143,6 +144,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new DStream by applying `groupByKey` over a sliding window. Similar to
    * `DStream.groupByKey()`, but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -159,6 +161,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new DStream by applying `groupByKey` over a sliding window. Similar to
    * `DStream.groupByKey()`, but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param windowLength width of the window as the number of subsequent events to contain
    *                     in the window
    * @param slideLength  sliding length of the window (i.e., the number of events after
@@ -166,15 +169,16 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param skipLength   skip length of the window as the number of the latest subsequent
    *                     events to skip and not to add to the window
    */
-  def groupByKeyAndWindow(windowLength: Int, slideLength: Int, skipLength: Int)
+  def groupByKeyAndTailWindow(windowLength: Int, slideLength: Int, skipLength: Int)
       : DStream[(K, Iterable[V])] = ssc.withScope {
-    groupByKeyAndWindow(windowLength, slideLength, skipLength, defaultPartitioner())
+    groupByKeyAndTailWindow(windowLength, slideLength, skipLength, defaultPartitioner())
   }
 
   /**
    * Return a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -196,6 +200,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param windowLength   width of the window as the number of subsequent events to contain
    *                       in the window
    * @param slideLength    sliding length of the window (i.e., the number of events after
@@ -205,18 +210,20 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param numPartitions  number of partitions of each RDD in the new DStream; if not specified
    *                       then Spark's default number of partitions will be used
    */
-  def groupByKeyAndWindow(
+  def groupByKeyAndTailWindow(
       windowLength: Int,
       slideLength: Int,
       skipLength: Int,
       numPartitions: Int
     ): DStream[(K, Iterable[V])] = ssc.withScope {
-    groupByKeyAndWindow(windowLength, slideLength, skipLength, defaultPartitioner(numPartitions))
+    groupByKeyAndTailWindow(windowLength, slideLength,
+      skipLength, defaultPartitioner(numPartitions))
   }
 
   /**
    * Create a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
+   *
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
    * @param slideDuration  sliding interval of the window (i.e., the interval after which
@@ -231,7 +238,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       slideDuration: Duration,
       partitioner: Partitioner
     ): DStream[(K, Iterable[V])] = ssc.withScope {
-    groupByKeyAndWindow(
+    groupByKeyAndTailWindow(
       (windowDuration / self.slideDuration).toInt,
       (slideDuration / self.slideDuration).toInt,
       skipLength = 0,
@@ -241,6 +248,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
   /**
    * Create a new DStream by applying `groupByKey` over a sliding window on `this` DStream.
    * Similar to `DStream.groupByKey()`, but applies it over a sliding window.
+   *
    * @param windowLength width of the window as the number of subsequent events to contain
    *                     in the window
    * @param slideLength  sliding length of the window (i.e., the number of events after
@@ -250,7 +258,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param partitioner  partitioner for controlling the partitioning of each RDD in the new
    *                     DStream.
    */
-  def groupByKeyAndWindow(
+  def groupByKeyAndTailWindow(
       windowLength: Int,
       slideLength: Int,
       skipLength: Int,
@@ -260,7 +268,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
     val mergeValue = (buf: ArrayBuffer[V], v: Iterable[V]) => buf ++= v
     val mergeCombiner = (buf1: ArrayBuffer[V], buf2: ArrayBuffer[V]) => buf1 ++= buf2
     self.groupByKey(partitioner)
-      .window(windowLength, slideLength, skipLength)
+      .tailWindow(windowLength, slideLength, skipLength)
       .combineByKey[ArrayBuffer[V]](createCombiner, mergeValue, mergeCombiner, partitioner)
       .asInstanceOf[DStream[(K, Iterable[V])]]
   }
@@ -270,6 +278,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Similar to `DStream.reduceByKey()`, but applies it over a sliding window. The new DStream
    * generates RDDs with the same interval as this DStream. Hash partitioning is used to generate
    * the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -286,6 +295,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -306,6 +316,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowLength   width of the window as the number of subsequent events to contain
    *                       in the window
@@ -314,19 +325,21 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param skipLength     skip length of the window as the number of the latest subsequent
    *                       events to skip and not to add to the window
    */
-  def reduceByKeyAndWindow(
+  def reduceByKeyAndTailWindow(
       reduceFunc: (V, V) => V,
       windowLength: Int,
       slideLength: Int,
       skipLength: Int
     ): DStream[(K, V)] = ssc.withScope {
-    reduceByKeyAndWindow(reduceFunc, windowLength, slideLength, skipLength, defaultPartitioner())
+    reduceByKeyAndTailWindow(reduceFunc, windowLength,
+      slideLength, skipLength, defaultPartitioner())
   }
 
   /**
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with `numPartitions` partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -342,14 +355,15 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       slideDuration: Duration,
       numPartitions: Int
     ): DStream[(K, V)] = ssc.withScope {
-    reduceByKeyAndWindow(reduceFunc, windowDuration, slideDuration,
-      defaultPartitioner(numPartitions))
+    reduceByKeyAndWindow(reduceFunc, windowDuration,
+      slideDuration, defaultPartitioner(numPartitions))
   }
 
   /**
    * Return a new DStream by applying `reduceByKey` over a sliding window. This is similar to
    * `DStream.reduceByKey()` but applies it over a sliding window. Hash partitioning is used to
    * generate the RDDs with `numPartitions` partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowLength   width of the window as the number of subsequent events to contain
    *                       in the window
@@ -359,20 +373,21 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    *                       events to skip and not to add to the window
    * @param numPartitions  number of partitions of each RDD in the new DStream.
    */
-  def reduceByKeyAndWindow(
+  def reduceByKeyAndTailWindow(
       reduceFunc: (V, V) => V,
       windowLength: Int,
       slideLength: Int,
       skipLength: Int,
       numPartitions: Int
     ): DStream[(K, V)] = ssc.withScope {
-    reduceByKeyAndWindow(reduceFunc, windowLength, slideLength,
+    reduceByKeyAndTailWindow(reduceFunc, windowLength, slideLength,
       skipLength, defaultPartitioner(numPartitions))
   }
 
   /**
    * Return a new DStream by applying `reduceByKey` over a sliding window. Similar to
    * `DStream.reduceByKey()`, but applies it over a sliding window.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
    *                       batching interval
@@ -397,6 +412,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
   /**
    * Return a new DStream by applying `reduceByKey` over a sliding window. Similar to
    * `DStream.reduceByKey()`, but applies it over a sliding window.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param windowLength   width of the window as the number of subsequent events to contain
    *                       in the window
@@ -407,7 +423,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param partitioner    partitioner for controlling the partitioning of each RDD
    *                       in the new DStream.
    */
-  def reduceByKeyAndWindow(
+  def reduceByKeyAndTailWindow(
       reduceFunc: (V, V) => V,
       windowLength: Int,
       slideLength: Int,
@@ -415,7 +431,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       partitioner: Partitioner
     ): DStream[(K, V)] = ssc.withScope {
     self.reduceByKey(reduceFunc, partitioner)
-      .window(windowLength, slideLength, skipLength)
+      .tailWindow(windowLength, slideLength, skipLength)
       .reduceByKey(reduceFunc, partitioner)
   }
 
@@ -429,6 +445,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * This is more efficient than reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
    * Hash partitioning is used to generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param invReduceFunc inverse reduce function; such that for all y, invertible x:
    *                      `invReduceFunc(reduceFunc(x, y), x) = y`
@@ -465,6 +482,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * This is more efficient than reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
    * Hash partitioning is used to generate the RDDs with Spark's default number of partitions.
+   *
    * @param reduceFunc associative and commutative reduce function
    * @param invReduceFunc inverse reduce function; such that for all y, invertible x:
    *                      `invReduceFunc(reduceFunc(x, y), x) = y`
@@ -477,7 +495,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param filterFunc     Optional function to filter expired key-value pairs;
    *                       only pairs that satisfy the function are retained
    */
-  def reduceByKeyAndWindow(
+  def reduceByKeyAndTailWindow(
       reduceFunc: (V, V) => V,
       invReduceFunc: (V, V) => V,
       windowLength: Int,
@@ -486,7 +504,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       numPartitions: Int = ssc.sc.defaultParallelism,
       filterFunc: ((K, V)) => Boolean = null
     ): DStream[(K, V)] = ssc.withScope {
-    reduceByKeyAndWindow(
+    reduceByKeyAndTailWindow(
       reduceFunc, invReduceFunc, windowLength, slideLength,
       skipLength, defaultPartitioner(numPartitions), filterFunc
     )
@@ -499,6 +517,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    *  2. "inverse reduce" the old values that left the window (e.g., subtracting old counts)
    * This is more efficient than reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
+   *
    * @param reduceFunc     associative and commutative reduce function
    * @param invReduceFunc  inverse reduce function
    * @param windowDuration width of the window; must be a multiple of this DStream's
@@ -540,6 +559,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    *  2. "inverse reduce" the old values that left the window (e.g., subtracting old counts)
    * This is more efficient than reduceByKeyAndWindow without "inverse reduce" function.
    * However, it is applicable to only "invertible reduce functions".
+   *
    * @param reduceFunc     associative and commutative reduce function
    * @param invReduceFunc  inverse reduce function
    * @param windowLength   width of the window as the number of subsequent events to contain
@@ -553,7 +573,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @param filterFunc     Optional function to filter expired key-value pairs;
    *                       only pairs that satisfy the function are retained
    */
-  def reduceByKeyAndWindow(
+  def reduceByKeyAndTailWindow(
       reduceFunc: (V, V) => V,
       invReduceFunc: (V, V) => V,
       windowLength: Int,
@@ -611,6 +631,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * Hash partitioning is used to generate the RDDs with Spark's default number of partitions.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @tparam S State type
@@ -625,6 +646,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * Hash partitioning is used to generate the RDDs with `numPartitions` partitions.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param numPartitions Number of partitions of each RDD in the new DStream.
@@ -641,6 +663,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of the key.
    * [[org.apache.spark.Partitioner]] is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param partitioner Partitioner for controlling the partitioning of each RDD in the new
@@ -662,6 +685,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * [[org.apache.spark.Partitioner]] is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. Note, that this function may generate a different
    *                   tuple with a different key than the input key. Therefore keys may be removed
    *                   or added in this way. It is up to the developer to decide whether to
@@ -683,6 +707,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of the key.
    * org.apache.spark.Partitioner is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. If `this` function returns None, then
    *                   corresponding state key-value pair will be eliminated.
    * @param partitioner Partitioner for controlling the partitioning of each RDD in the new
@@ -706,6 +731,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * Return a new "state" DStream where the state for each key is updated by applying
    * the given function on the previous state of the key and the new values of each key.
    * org.apache.spark.Partitioner is used to control the partitioning of each RDD.
+   *
    * @param updateFunc State update function. Note, that this function may generate a different
    *                   tuple with a different key than the input key. Therefore keys may be removed
    *                   or added in this way. It is up to the developer to decide whether to

@@ -536,7 +536,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
       testCheckpointedOperation(
         Seq(Seq("a", "a", "b"), Seq("", ""), Seq(), Seq("a", "a", "b"), Seq("", ""), Seq()),
         (s: DStream[String]) => {
-          s.transform { (rdd, time) =>
+          s.transform { (rdd: RDD[String], time: Time) =>
             val output = rdd.map(x => (x, 1)).reduceByKey(_ + _)
             output.saveAsHadoopFile(
               new File(tempDir, "result-" + time.milliseconds).getAbsolutePath,

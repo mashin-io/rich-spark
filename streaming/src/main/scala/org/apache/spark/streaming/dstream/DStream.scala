@@ -689,7 +689,8 @@ abstract class DStream[T: ClassTag] (
    * This is an output operator, so the new DStream will be registered as an output stream
    * and therefore materialized.
    */
-  def foreachRDD(foreachFunc: (RDD[T], Event) => Unit): DStream[T] = ssc.withScope {
+  def foreachRDD(foreachFunc: (RDD[T], Event) => Unit)
+    (implicit dummyImplicit: DummyImplicit): DStream[T] = ssc.withScope {
     // because the DStream is reachable from the outer object here, and because
     // DStreams can't be serialized with closures, we can't proactively check
     // it for serializability and so we pass the optional false to SparkContext.clean
@@ -709,7 +710,9 @@ abstract class DStream[T: ClassTag] (
    */
   private def foreachRDD(
       foreachFunc: (RDD[T], Event) => Unit,
-      displayInnerRDDOps: Boolean): DStream[T] = {
+      displayInnerRDDOps: Boolean)
+      (implicit dummyImplicit: DummyImplicit)
+    : DStream[T] = {
     new ForEachDStream(this,
       ForEachFunctionWithEvent(context.sparkContext.clean(foreachFunc, false)),
       displayInnerRDDOps).register()
@@ -749,6 +752,7 @@ abstract class DStream[T: ClassTag] (
    */
   def transform[U: ClassTag](
       transformFunc: (RDD[T], Event) => RDD[U])
+      (implicit dummyImplicit: DummyImplicit)
     : DStream[U] = ssc.withScope {
     // because the DStream is reachable from the outer object here, and because
     // DStreams can't be serialized with closures, we can't proactively check
@@ -801,7 +805,7 @@ abstract class DStream[T: ClassTag] (
    */
   def transformWith[U: ClassTag, V: ClassTag](
       other: DStream[U], transformFunc: (RDD[T], RDD[U], Event) => RDD[V]
-    ): DStream[V] = ssc.withScope {
+    )(implicit dummyImplicit: DummyImplicit): DStream[V] = ssc.withScope {
     // because the DStream is reachable from the outer object here, and because
     // DStreams can't be serialized with closures, we can't proactively check
     // it for serializability and so we pass the optional false to SparkContext.clean
@@ -866,7 +870,7 @@ abstract class DStream[T: ClassTag] (
    */
   @deprecated
   def window(windowDuration: Duration, slideDuration: Duration): DStream[T] = ssc.withScope {
-    window(
+    tailWindow(
       (windowDuration / this.slideDuration).toInt,
       (slideDuration / this.slideDuration).toInt,
       skipLength = 0)
@@ -886,7 +890,8 @@ abstract class DStream[T: ClassTag] (
    * @param skipLength   skip length of the window as the number of the latest subsequent
    *                     events to skip and not to add to the window
    */
-  def window(windowLength: Int, slideLength: Int, skipLength: Int): DStream[T] = ssc.withScope {
+  def tailWindow(windowLength: Int, slideLength: Int, skipLength: Int)
+    : DStream[T] = ssc.withScope {
     new WindowedDStream(this, windowLength, slideLength, skipLength)
   }
 
@@ -907,7 +912,7 @@ abstract class DStream[T: ClassTag] (
       windowDuration: Duration,
       slideDuration: Duration
     ): DStream[T] = ssc.withScope {
-    reduceByWindow(reduceFunc,
+    reduceByTailWindow(reduceFunc,
       (windowDuration / this.slideDuration).toInt,
       (slideDuration / this.slideDuration).toInt,
       skipLength = 0)
@@ -925,13 +930,13 @@ abstract class DStream[T: ClassTag] (
    * @param skipLength   skip length of the window as the number of the latest subsequent
    *                     events to skip and not to add to the window
    */
-  def reduceByWindow(
+  def reduceByTailWindow(
       reduceFunc: (T, T) => T,
       windowLength: Int,
       slideLength: Int,
       skipLength: Int
     ): DStream[T] = ssc.withScope {
-    this.reduce(reduceFunc).window(windowLength, slideLength, skipLength).reduce(reduceFunc)
+    this.reduce(reduceFunc).tailWindow(windowLength, slideLength, skipLength).reduce(reduceFunc)
   }
 
   /**
@@ -959,7 +964,7 @@ abstract class DStream[T: ClassTag] (
       windowDuration: Duration,
       slideDuration: Duration
     ): DStream[T] = ssc.withScope {
-      reduceByWindow(reduceFunc, invReduceFunc,
+      reduceByTailWindow(reduceFunc, invReduceFunc,
         (windowDuration / this.slideDuration).toInt,
         (slideDuration / this.slideDuration).toInt,
         skipLength = 0)
@@ -984,7 +989,7 @@ abstract class DStream[T: ClassTag] (
    * @param skipLength     skip length of the window as the number of the latest subsequent
    *                       events to skip and not to add to the window
    */
-  def reduceByWindow(
+  def reduceByTailWindow(
       reduceFunc: (T, T) => T,
       invReduceFunc: (T, T) => T,
       windowLength: Int,
@@ -992,7 +997,7 @@ abstract class DStream[T: ClassTag] (
       skipLength: Int
     ): DStream[T] = ssc.withScope {
     this.map((1, _))
-        .reduceByKeyAndWindow(reduceFunc, invReduceFunc, windowLength, slideLength, skipLength, 1)
+        .reduceByKeyAndTailWindow(reduceFunc, invReduceFunc, windowLength, slideLength, skipLength, 1)
         .map(_._2)
   }
 
@@ -1011,7 +1016,7 @@ abstract class DStream[T: ClassTag] (
   def countByWindow(
       windowDuration: Duration,
       slideDuration: Duration): DStream[Long] = ssc.withScope {
-    countByWindow(
+    countByTailWindow(
       (windowDuration / this.slideDuration).toInt,
       (slideDuration / this.slideDuration).toInt,
       skipLength = 0)
@@ -1029,11 +1034,11 @@ abstract class DStream[T: ClassTag] (
    * @param skipLength   skip length of the window as the number of the latest subsequent
    *                     events to skip and not to add to the window
    */
-  def countByWindow(
+  def countByTailWindow(
       windowLength: Int,
       slideLength: Int,
       skipLength: Int): DStream[Long] = ssc.withScope {
-    this.map(_ => 1L).reduceByWindow(_ + _, _ - _, windowLength, slideLength, skipLength)
+    this.map(_ => 1L).reduceByTailWindow(_ + _, _ - _, windowLength, slideLength, skipLength)
   }
 
   /**
@@ -1056,7 +1061,7 @@ abstract class DStream[T: ClassTag] (
       numPartitions: Int = ssc.sc.defaultParallelism)
       (implicit ord: Ordering[T] = null)
       : DStream[(T, Long)] = ssc.withScope {
-    countByValueAndWindow(
+    countByValueAndTailWindow(
       (windowDuration / this.slideDuration).toInt,
       (slideDuration / this.slideDuration).toInt,
       skipLength = 0, numPartitions)(ord)
@@ -1076,14 +1081,14 @@ abstract class DStream[T: ClassTag] (
    *                       events to skip and not to add to the window
    * @param numPartitions  number of partitions of each RDD in the new DStream.
    */
-  def countByValueAndWindow(
+  def countByValueAndTailWindow(
       windowLength: Int,
       slideLength: Int,
       skipLength: Int,
       numPartitions: Int = ssc.sc.defaultParallelism)
       (implicit ord: Ordering[T] = null)
     : DStream[(T, Long)] = ssc.withScope {
-    this.map((_, 1L)).reduceByKeyAndWindow(
+    this.map((_, 1L)).reduceByKeyAndTailWindow(
       (x: Long, y: Long) => x + y,
       (x: Long, y: Long) => x - y,
       windowLength,
