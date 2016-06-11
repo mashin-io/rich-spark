@@ -107,4 +107,12 @@ class DurationSuite extends TestSuiteBase {
     assert(new Duration(2 * 60 * 1000) == Minutes(2))
   }
 
+  test("Hours") {
+    assert(new Duration(2 * 60 * 60 * 1000) == Hours(2))
+  }
+
+  test("Days") {
+    assert(new Duration(2 * 24 * 60 * 60 * 1000) == Days(2))
+  }
+
 }

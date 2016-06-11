@@ -98,6 +98,22 @@ object Minutes {
   def apply(minutes: Long): Duration = new Duration(minutes * 60000)
 }
 
+/**
+ * Helper object that creates instance of [[org.apache.spark.streaming.Duration]] representing
+ * a given number of hours.
+ */
+object Hours {
+  def apply(hours: Long): Duration = new Duration(hours * 3600000)
+}
+
+/**
+ * Helper object that creates instance of [[org.apache.spark.streaming.Duration]] representing
+ * a given number of days.
+ */
+object Days {
+  def apply(days: Long): Duration = new Duration(days * 86400000)
+}
+
 // Java-friendlier versions of the objects above.
 // Named "Durations" instead of "Duration" to avoid changing the case class's implied API.
 
@@ -117,5 +133,15 @@ object Durations {
    * @return [[org.apache.spark.streaming.Duration]] representing given number of minutes.
    */
   def minutes(minutes: Long): Duration = Minutes(minutes)
+
+  /**
+   * @return [[org.apache.spark.streaming.Duration]] representing given number of hours.
+   */
+  def hours(hours: Long): Duration = Hours(hours)
+
+  /**
+   * @return [[org.apache.spark.streaming.Duration]] representing given number of days.
+   */
+  def days(days: Long): Duration = Days(days)
 
 }
