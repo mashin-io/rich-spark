@@ -41,8 +41,8 @@ class TimeWindowedDStream[T: ClassTag](
     // Compute the window that ends at or just before 'event'.
     val dependency = dependencies.head.asInstanceOf[TimeWindowDependency[T]]
     val rddsInWindow = dependency.rdds(event)
-    // A window is computed if 'event' is the only event at the end or after it.
-    if (rddsInWindow.nonEmpty && dependency.eventsAfterPrevWindow(event).size <= 1) {
+    // A window is computed if 'event' is the only event after it.
+    if (rddsInWindow.nonEmpty && dependency.eventsAfterLatestWindow(event).size == 1) {
       Some(ssc.sc.union(rddsInWindow))
     } else {
       None

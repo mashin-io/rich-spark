@@ -49,28 +49,67 @@ class TimeWindowDependency[T: ClassTag](
   override def rdds(event: Event): Seq[RDD[T]] = {
     stream.getOrCompute(event)
 
-    val windowEnd = prevWindowEnd(event)
-    val windowStart = windowEnd - windowDuration + slideDuration
+    // - a window is triggered by the first event after it and cannot
+    // be triggered by events at its end; it could be possible that two
+    // events occur simultaneously at the end boundary of the window.
+    // - two subsequent events could be more than one window slide apart.
+
+    // the end and start times of the window just before the window of the
+    // given event that has events (i.e. non-empty)
+    val latestEnd = latestWindowEnd(event)
+    val latestStart = latestEnd - windowDuration
 
     stream.generatedEvents
-      .filter(e => e.time >= windowStart && e.time <= windowEnd)
+      .filter(e => e.time >= latestStart && e.time < latestEnd)
       .map(stream.getOrCompute)
       .filter(_.nonEmpty).map(_.get).toSeq
   }
 
   /**
-   * Return the end time of the window occurring before the given event.
+   * Return the end time of the last window covering this event.
    */
-  def prevWindowEnd(event: Event): Time = {
-    zeroTime + slideDuration * ((event.time - zeroTime) / slideDuration).toInt
+  def lastWindowEnd(event: Event): Time = {
+    val firstEnd = firstWindowEnd(event)
+    firstEnd + slideDuration *
+      math.floor((windowDuration - (firstEnd - event.time)) / slideDuration).toInt
   }
 
   /**
-   * Return the sequence of events at the end and after the window
+   * Return the end time of the first window covering this event.
+   */
+  def firstWindowEnd(event: Event): Time = {
+    zeroTime + slideDuration * math.ceil((event.time - zeroTime) / slideDuration).toInt
+  }
+
+  /**
+   * Return the end time of the window just before the window of
+   * the given event and does not necessarily have events.
+   */
+  def prevWindowEnd(event: Event): Time = {
+    firstWindowEnd(event) - slideDuration
+  }
+
+  /**
+   * Return the end time of the window just before the window of the
+   * given event that has events (i.e. non-empty).
+   */
+  def latestWindowEnd(event: Event): Time = {
+    // the end time of the window just before the window of the given event
+    // and does not necessarily have events
+    val prevEnd = prevWindowEnd(event)
+    // the end time of the window just before the window of the
+    // given event that has events (i.e. non-empty)
+    stream.generatedEvents
+      .filter(_.time < prevEnd).lastOption.map(firstWindowEnd)
+      .getOrElse(zeroTime)
+  }
+
+  /**
+   * Return the sequence of events after the non-empty window
    * occurring before the given event.
    */
-  def eventsAfterPrevWindow(event: Event): Seq[Event] = {
-    val windowEnd = prevWindowEnd(event)
+  def eventsAfterLatestWindow(event: Event): Seq[Event] = {
+    val windowEnd = latestWindowEnd(event)
     stream.generatedEvents.filter(_.time >= windowEnd).toSeq
   }
 }

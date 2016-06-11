@@ -87,9 +87,9 @@ class ReducedTimeWindowedDStream[K: ClassTag, V: ClassTag](
       case dependency: TimeWindowDependency[(K, V)] => dependency.rdds(event)
     }
 
-    // A window is computed if 'event' is the only event at the end or after it.
+    // A window is computed if 'event' is the only event after it.
     val newRDDsDependency = dependenciesList.last.asInstanceOf[TimeWindowDependency[(K, V)]]
-    if (newRDDsDependency.eventsAfterPrevWindow(event).size <= 1) {
+    if (newRDDsDependency.eventsAfterLatestWindow(event).size == 1) {
       // Get the RDDs of the reduced values in "old time steps"
       val oldRDDs = allRDDs(1)
       // Get the RDDs of the reduced values in "new time steps"
