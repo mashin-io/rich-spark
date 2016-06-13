@@ -25,30 +25,16 @@ import org.apache.spark.streaming.event.Event
 import scala.reflect.ClassTag
 
 private[streaming]
-class WindowedDStream[T: ClassTag](
-    parent: DStream[T],
-    _window: Int,
-    _slide: Int,
-    _skip: Int
+abstract class WindowedDStream[T: ClassTag](
+    parent: DStream[T]
   ) extends DStream[T](parent.ssc) {
 
   // Persist parent level by default, as those RDDs are going to be obviously reused.
   parent.persist(StorageLevel.MEMORY_ONLY_SER)
 
-  def windowLength: Int = _window
+  def windowDuration: Duration
 
-  def slideLength: Int = _slide
-
-  def skipLength: Int = _skip
-
-  override def dependencies: List[Dependency[_]] = {
-    List(new TailDependency[T](parent, skipLength, windowLength, computeEvent = true))
-  }
-
-  override def slideDuration: Duration = parent.slideDuration * slideLength
-
-  override def parentRememberDuration: Duration = rememberDuration +
-    parent.slideDuration * windowLength
+  override def parentRememberDuration: Duration = rememberDuration + windowDuration
 
   override def persist(level: StorageLevel): DStream[T] = {
     // Do not let this windowed DStream be persisted as windowed (union-ed) RDDs share underlying
@@ -58,15 +44,57 @@ class WindowedDStream[T: ClassTag](
     this
   }
 
+  def shouldCompute(event: Event): Boolean
+
   override def compute(event: Event): Option[RDD[T]] = {
-    val rddsInWindow = dependencies.head.asInstanceOf[TailDependency[T]].rdds(event)
-    if (rddsInWindow.nonEmpty && (event.index + 1) % slideLength == 0) {
+    val rddsInWindow = dependencies.head.asInstanceOf[Dependency[T]].rdds(event)
+    if (rddsInWindow.nonEmpty && shouldCompute(event)) {
       Some(ssc.sc.union(rddsInWindow))
     } else {
       None
     }
-    //val currentWindow = new Interval(validTime - windowLength + parent.slideDuration, validTime)
-    //val rddsInWindow = parent.slice(currentWindow)
-    //Some(ssc.sc.union(rddsInWindow))
+  }
+}
+
+private[streaming]
+class TailWindowedDStream[T: ClassTag](
+    parent: DStream[T],
+    windowLength: Int,
+    slideLength: Int,
+    skipLength: Int
+  ) extends WindowedDStream[T](parent) {
+
+  override def dependencies: List[Dependency[_]] = {
+    List(new TailDependency[T](parent, skipLength, windowLength, computeEvent = true))
+  }
+
+  override def slideDuration: Duration = parent.slideDuration * slideLength
+
+  override def windowDuration: Duration = parent.slideDuration * windowLength
+
+  override def shouldCompute(event: Event): Boolean = {
+    (event.index + 1) % slideLength == 0
+  }
+}
+
+private[streaming]
+class TimeWindowedDStream[T: ClassTag](
+    parent: DStream[T],
+    windowLength: Duration,
+    slideLength: Duration
+  ) extends WindowedDStream[T](parent) {
+
+  override def dependencies: List[Dependency[_]] = {
+    List(new TimeWindowDependency[T](parent, parent.zeroTime, windowLength, slideLength))
+  }
+
+  override def slideDuration: Duration = slideLength
+
+  override def windowDuration: Duration = windowLength
+
+  override def shouldCompute(event: Event): Boolean = {
+    // A window is computed if 'event' is the only event after it.
+    dependencies.head.asInstanceOf[TimeWindowDependency[T]]
+      .eventsAfterLatestWindow(event).size == 1
   }
 }

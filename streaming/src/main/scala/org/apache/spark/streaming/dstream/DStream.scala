@@ -366,7 +366,7 @@ abstract class DStream[T: ClassTag] (
           if (checkpointDuration != null
             && (event.time - zeroTime).isMultipleOf(checkpointDuration)) {
             newRDD.checkpoint()
-            logInfo(s"Marking RDD ${newRDD.id} for time $event for checkpointing")
+            logInfo(s"Marking RDD ${newRDD.id} for event $event for checkpointing")
           }
           generatedRDDs.put(event, newRDD)
           generatedEvents += event
@@ -892,7 +892,7 @@ abstract class DStream[T: ClassTag] (
    */
   def tailWindow(windowLength: Int, slideLength: Int, skipLength: Int)
     : DStream[T] = ssc.withScope {
-    new WindowedDStream(this, windowLength, slideLength, skipLength)
+    new TailWindowedDStream(this, windowLength, slideLength, skipLength)
   }
 
   /**

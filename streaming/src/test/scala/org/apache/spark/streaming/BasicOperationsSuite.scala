@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import org.apache.spark.rdd.{BlockRDD, RDD}
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming.dstream.{DStream, WindowedDStream}
+import org.apache.spark.streaming.dstream.{DStream, TailWindowedDStream}
 import org.apache.spark.streaming.event.Event
 import org.apache.spark.util.{Clock, ManualClock}
 import org.apache.spark.{HashPartitioner, SparkConf, SparkException}
@@ -591,8 +591,8 @@ class BasicOperationsSuite extends TestSuiteBase {
 
     val operatedStream = runCleanupTest(conf, operation _,
       numExpectedOutput = cleanupTestInput.size / 2, rememberDuration = Seconds(3))
-    val windowedStream2 = operatedStream.asInstanceOf[WindowedDStream[_]]
-    val windowedStream1 = windowedStream2.dependencies.head.stream.asInstanceOf[WindowedDStream[_]]
+    val windowedStream2 = operatedStream.asInstanceOf[TailWindowedDStream[_]]
+    val windowedStream1 = windowedStream2.dependencies.head.stream.asInstanceOf[TailWindowedDStream[_]]
     val mappedStream = windowedStream1.dependencies.head.stream
 
     // Checkpoint remember durations
