@@ -783,7 +783,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
     val cleanedReduceFunc = ssc.sc.clean(reduceFunc)
     val cleanedInvReduceFunc = ssc.sc.clean(invReduceFunc)
     val cleanedFilterFunc = if (filterFunc != null) Some(ssc.sc.clean(filterFunc)) else None
-    new ReducedWindowedDStream[K, V](
+    new ReducedTailWindowedDStream[K, V](
       self, cleanedReduceFunc, cleanedInvReduceFunc, cleanedFilterFunc,
       windowLength, slideLength, skipLength, partitioner
     )
