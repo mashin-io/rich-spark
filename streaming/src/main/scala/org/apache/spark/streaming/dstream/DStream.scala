@@ -412,13 +412,23 @@ abstract class DStream[T: ClassTag] (
             newRDD.persist(storageLevel)
             logDebug(s"Persisting RDD ${newRDD.id} for time $event to $storageLevel")
           }
-          if (checkpointDuration.isDefined
-            && (event.time - zeroTime).isMultipleOf(checkpointDuration.get)) {
-            newRDD.checkpoint()
-            logInfo(s"Marking RDD ${newRDD.id} for event $event for checkpointing")
-          }
           generatedRDDs.put(event, newRDD)
           generatedEvents += event
+          if (checkpointDuration.isDefined || checkpointCount.isDefined) {
+            // compute events count and duration since last checkpoint
+            val count = event.index - lastCheckpointEvent.map(_.index).getOrElse(-1L)
+            val duration = event.time - lastCheckpointEvent.map(_.time).getOrElse(zeroTime)
+            // whether `checkpointCount` or `checkpointDuration` passed since last checkpoint
+            val checkpointOnCount = checkpointCount.exists(count >= _)
+            val checkpointOnDuration = checkpointDuration.exists(duration >= _)
+            if (checkpointOnCount || checkpointOnDuration) {
+              lastCheckpointEvent = Some(event)
+              newRDD.checkpoint()
+              logInfo(s"Marking RDD ${newRDD.id} for event $event for checkpointing, " +
+                s"${if (checkpointOnCount) s"$count event(s)" else s"$duration"}" +
+                s" passed since last checkpoint")
+            }
+          }
         }
         rddOption
       } else {
