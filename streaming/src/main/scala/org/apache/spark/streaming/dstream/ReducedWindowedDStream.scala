@@ -21,7 +21,7 @@ import org.apache.spark.Partitioner
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming._
-import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.event.{MaxEventExtent, Event}
 
 import scala.reflect.ClassTag
 
@@ -43,10 +43,6 @@ abstract class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
   reducedStream.persist(StorageLevel.MEMORY_ONLY_SER)
 
   override val mustCheckpoint = true
-
-  def windowDuration: Duration
-
-  override def parentRememberDuration: Duration = rememberDuration + windowDuration
 
   override def persist(storageLevel: StorageLevel): DStream[(K, V)] = {
     super.persist(storageLevel)
@@ -183,7 +179,7 @@ class ReducedTailWindowedDStream[K: ClassTag, V: ClassTag](
 
   override def slideDuration: Duration = parent.slideDuration * slideLength
 
-  override def windowDuration: Duration = parent.slideDuration * windowLength
+  override def parentRememberExtent: MaxEventExtent = rememberExtent + (windowLength + skipLength)
 
   override def shouldCompute(event: Event): Boolean = {
     (event.index + 1) % slideLength == 0
@@ -224,7 +220,7 @@ class ReducedTimeWindowedDStream[K: ClassTag, V: ClassTag](
 
   override def slideDuration: Duration = slideLength
 
-  override def windowDuration: Duration = windowLength
+  override def parentRememberExtent: MaxEventExtent = rememberExtent + windowLength
 
   override def shouldCompute(event: Event): Boolean = {
     // A window is computed if 'event' is the only event after it.

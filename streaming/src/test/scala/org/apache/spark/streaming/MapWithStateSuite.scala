@@ -467,8 +467,8 @@ class MapWithStateSuite extends SparkFunSuite
         mapWithStateStream.register()
         ssc.checkpoint(checkpointDir.toString)
         ssc.start()  // should initialize all the checkpoint durations
-        assert(mapWithStateStream.checkpointDuration === null)
-        assert(internalmapWithStateStream.checkpointDuration === expectedCheckpointDuration)
+        assert(mapWithStateStream.checkpointDuration.isEmpty)
+        assert(internalmapWithStateStream.checkpointDuration === Some(expectedCheckpointDuration))
       } finally {
         ssc.stop(stopSparkContext = false)
       }

@@ -131,8 +131,8 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
   /** Override the default checkpoint duration */
   override def initialize(time: Time): Unit = {
-    if (checkpointDuration == null) {
-      checkpointDuration = slideDuration * DEFAULT_CHECKPOINT_DURATION_MULTIPLIER
+    if (checkpointDuration.isEmpty) {
+      checkpointDuration = Some(slideDuration * DEFAULT_CHECKPOINT_DURATION_MULTIPLIER)
     }
     super.initialize(time)
   }

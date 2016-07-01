@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import org.apache.spark.rdd.{BlockRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.dstream.{DStream, TailWindowedDStream}
-import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.event.{MaxEventExtent, Event}
 import org.apache.spark.util.{Clock, ManualClock}
 import org.apache.spark.{HashPartitioner, SparkConf, SparkException}
 
@@ -595,12 +595,32 @@ class BasicOperationsSuite extends TestSuiteBase {
     val windowedStream1 = windowedStream2.dependencies.head.stream.asInstanceOf[TailWindowedDStream[_]]
     val mappedStream = windowedStream1.dependencies.head.stream
 
+    val windowedStream2RememberExtent = new MaxEventExtent
+    windowedStream2RememberExtent.set(rememberDuration)
+
+    val windowedStream1RememberExtent = new MaxEventExtent
+    windowedStream1RememberExtent.set(rememberDuration +
+      batchDuration * windowedStream2.windowLength)
+
+    val mappedStreamRememberExtent = new MaxEventExtent
+    mappedStreamRememberExtent.set(rememberDuration + batchDuration *
+      (windowedStream2.windowLength + windowedStream1.windowLength))
+
+    // Checkpoint remember counts
+    assert(windowedStream2.rememberCount ===
+      windowedStream2RememberExtent.evalCount(windowedStream2.generatedEvents))
+    assert(windowedStream1.rememberCount ===
+      windowedStream1RememberExtent.evalCount(windowedStream1.generatedEvents))
+    assert(mappedStream.rememberCount ===
+      mappedStreamRememberExtent.evalCount(mappedStream.generatedEvents))
+
     // Checkpoint remember durations
-    assert(windowedStream2.rememberDuration === rememberDuration)
+    assert(windowedStream2.rememberDuration ===
+      windowedStream2RememberExtent.evalDuration(windowedStream2.generatedEvents))
     assert(windowedStream1.rememberDuration ===
-      rememberDuration + batchDuration * windowedStream2.windowLength)
-    assert(mappedStream.rememberDuration === rememberDuration + batchDuration *
-        (windowedStream2.windowLength + windowedStream1.windowLength))
+      windowedStream1RememberExtent.evalDuration(windowedStream1.generatedEvents))
+    assert(mappedStream.rememberDuration ===
+      mappedStreamRememberExtent.evalDuration(mappedStream.generatedEvents))
 
     // WindowedStream2 should remember till 7 seconds: 10, 9, 8, 7
     // WindowedStream1 should remember till 4 seconds: 10, 9, 8, 7, 6, 5, 4
@@ -629,7 +649,13 @@ class BasicOperationsSuite extends TestSuiteBase {
     val stateStream = runCleanupTest(
       conf, _.map(_ -> 1).updateStateByKey(updateFunc).checkpoint(Seconds(3)))
 
-    assert(stateStream.rememberDuration === stateStream.checkpointDuration * 2)
+    val stateStreamRememberExtent = new MaxEventExtent
+    stateStreamRememberExtent.set(stateStream.checkpointDuration.get * 2)
+
+    assert(stateStream.rememberCount ===
+      stateStreamRememberExtent.evalCount(stateStream.generatedEvents))
+    assert(stateStream.rememberDuration ===
+      stateStreamRememberExtent.evalDuration(stateStream.generatedEvents))
     assert(stateStream.generatedRDDs.keys.exists(_.time == Time(10000)))
     assert(!stateStream.generatedRDDs.keys.exists(_.time == Time(4000)))
   }

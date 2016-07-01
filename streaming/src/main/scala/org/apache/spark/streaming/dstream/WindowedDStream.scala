@@ -20,7 +20,7 @@ package org.apache.spark.streaming.dstream
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{Duration, _}
-import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.event.{MaxEventExtent, Event}
 
 import scala.reflect.ClassTag
 
@@ -31,10 +31,6 @@ abstract class WindowedDStream[T: ClassTag](
 
   // Persist parent level by default, as those RDDs are going to be obviously reused.
   parent.persist(StorageLevel.MEMORY_ONLY_SER)
-
-  def windowDuration: Duration
-
-  override def parentRememberDuration: Duration = rememberDuration + windowDuration
 
   override def persist(level: StorageLevel): DStream[T] = {
     // Do not let this windowed DStream be persisted as windowed (union-ed) RDDs share underlying
@@ -59,38 +55,48 @@ abstract class WindowedDStream[T: ClassTag](
 private[streaming]
 class TailWindowedDStream[T: ClassTag](
     parent: DStream[T],
-    windowLength: Int,
-    slideLength: Int,
-    skipLength: Int
+    _windowLength: Int,
+    _slideLength: Int,
+    _skipLength: Int
   ) extends WindowedDStream[T](parent) {
 
+  def windowLength: Int = _windowLength
+
+  def slideLength: Int = _slideLength
+
+  def skipLength: Int = _skipLength
+
   override def dependencies: List[Dependency[_]] = {
-    List(new TailDependency[T](parent, skipLength, windowLength, computeEvent = true))
+    List(new TailDependency[T](parent, _skipLength, _windowLength, computeEvent = true))
   }
 
-  override def slideDuration: Duration = parent.slideDuration * slideLength
+  override def slideDuration: Duration = parent.slideDuration * _slideLength
 
-  override def windowDuration: Duration = parent.slideDuration * windowLength
+  override def parentRememberExtent: MaxEventExtent = rememberExtent + (_windowLength + _skipLength)
 
   override def shouldCompute(event: Event): Boolean = {
-    (event.index + 1) % slideLength == 0
+    (event.index + 1) % _slideLength == 0
   }
 }
 
 private[streaming]
 class TimeWindowedDStream[T: ClassTag](
     parent: DStream[T],
-    windowLength: Duration,
-    slideLength: Duration
+    _windowLength: Duration,
+    _slideLength: Duration
   ) extends WindowedDStream[T](parent) {
 
+  def windowLength: Duration = _windowLength
+
+  def slideLength: Duration = _slideLength
+
   override def dependencies: List[Dependency[_]] = {
-    List(new TimeWindowDependency[T](parent, parent.zeroTime, windowLength, slideLength))
+    List(new TimeWindowDependency[T](parent, parent.zeroTime, _windowLength, _slideLength))
   }
 
-  override def slideDuration: Duration = slideLength
+  override def slideDuration: Duration = _slideLength
 
-  override def windowDuration: Duration = windowLength
+  override def parentRememberExtent: MaxEventExtent = rememberExtent + _windowLength
 
   override def shouldCompute(event: Event): Boolean = {
     // A window is computed if 'event' is the only event after it.

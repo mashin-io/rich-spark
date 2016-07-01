@@ -20,12 +20,14 @@ package org.apache.spark.streaming.dstream
 
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 
+import scala.collection.mutable.ListBuffer
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.{BlockRDD, PairRDDFunctions, RDD, RDDOperationScope}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.StreamingContext.rddToFileName
 import org.apache.spark.streaming._
-import org.apache.spark.streaming.event.{Event, EventSource}
+import org.apache.spark.streaming.event.{MaxEventExtent, TimerEvent, Event, EventSource}
 import org.apache.spark.streaming.scheduler.Job
 import org.apache.spark.util.{CallSite, Utils}
 import org.apache.spark.{SparkContext, SparkException}
@@ -68,7 +70,7 @@ abstract class DStream[T: ClassTag] (
   // Methods that should be implemented by subclasses of DStream
   // =======================================================================
 
-  /** Time interval after which the DStream generates a RDD */
+  /** Time interval after which the DStream generates an RDD */
   @deprecated
   def slideDuration: Duration
 
@@ -96,26 +98,49 @@ abstract class DStream[T: ClassTag] (
   // Time zero for the DStream
   private[streaming] var zeroTime: Time = null
 
-  // Duration for which the DStream will remember each RDD created
-  private[streaming] var rememberDuration: Duration = null
+  // The extent to which the DStream will remember each RDD created
+  private[streaming] val rememberExtent = new MaxEventExtent
+
+  /** Duration up to the last event within which the DStream will remember RDDs created */
+  private[streaming] def rememberDuration: Duration = {
+    rememberExtent.evalDuration(generatedEvents)
+  }
+
+  /** Duration up to the given event within which the DStream will remember RDDs created */
+  private[streaming] def rememberDuration(event: Event): Duration = {
+    rememberExtent.evalDuration(generatedEvents.to(event))
+  }
+
+  /** Number of RDDs generated up to the last event which the DStream will remember */
+  private[streaming] def rememberCount: Int = {
+    rememberExtent.evalCount(generatedEvents)
+  }
+
+  /** Number of RDDs generated up to the given event which the DStream will remember */
+  private[streaming] def rememberCount(event: Event): Int = {
+    rememberExtent.evalCount(generatedEvents.to(event))
+  }
 
   // Storage level of the RDDs in the stream
   private[streaming] var storageLevel: StorageLevel = StorageLevel.NONE
 
   // Checkpoint details
   private[streaming] val mustCheckpoint = false
-  private[streaming] var checkpointDuration: Duration = null
+  // Number of events since last checkpoint after which the generated RDD should be checkpointed
+  private[streaming] var checkpointCount: Option[Int] = None
+  // Duration since last checkpoint after which the generated RDD should be checkpointed
+  private[streaming] var checkpointDuration: Option[Duration] = None
   private[streaming] val checkpointData = new DStreamCheckpointData(this)
-  @transient
-  private var restoredFromCheckpointData = false
+  private var lastCheckpointEvent: Option[Event] = None
+  @transient private var restoredFromCheckpointData = false
 
   // Reference to whole DStream graph
   private[streaming] var graph: DStreamGraph = null
 
   private[streaming] def isInitialized = zeroTime != null
 
-  // Duration for which the DStream requires its parent DStream to remember each RDD created
-  private[streaming] def parentRememberDuration = rememberDuration
+  // Extent to which the DStream requires its parent DStream to remember each RDD created
+  private[streaming] def parentRememberExtent = rememberExtent
 
   /** Return the StreamingContext associated with this DStream */
   def context: StreamingContext = ssc
@@ -188,7 +213,22 @@ abstract class DStream[T: ClassTag] (
         "Cannot change checkpoint interval of a DStream after streaming context has started")
     }
     persist()
-    checkpointDuration = interval
+    checkpointDuration = Some(interval)
+    this
+  }
+
+  /**
+   * Enable periodic checkpointing of RDDs of this DStream
+   *
+   * @param interval Number of events after which generated RDD will be checkpointed
+   */
+  def checkpoint(interval: Int): DStream[T] = {
+    if (isInitialized) {
+      throw new UnsupportedOperationException(
+        "Cannot change checkpoint interval of a DStream after streaming context has started")
+    }
+    persist()
+    checkpointCount = Some(interval)
     this
   }
 
@@ -205,20 +245,18 @@ abstract class DStream[T: ClassTag] (
     zeroTime = time
 
     // Set the checkpoint interval to be slideDuration or 10 seconds, which ever is larger
-    if (mustCheckpoint && checkpointDuration == null) {
-      checkpointDuration = slideDuration * math.ceil(Seconds(10) / slideDuration).toInt
-      logInfo(s"Checkpoint interval automatically set to $checkpointDuration")
+    if (mustCheckpoint && checkpointDuration.isEmpty) {
+      checkpointDuration = Some(slideDuration * math.ceil(Seconds(10) / slideDuration).toInt)
+      logInfo(s"Checkpoint interval automatically set to ${checkpointDuration.get}")
     }
 
     // Set the minimum value of the rememberDuration if not already set
     var minRememberDuration = slideDuration
-    if (checkpointDuration != null && minRememberDuration <= checkpointDuration) {
+    if (checkpointDuration.isDefined && minRememberDuration <= checkpointDuration.get) {
       // times 2 just to be sure that the latest checkpoint is not forgotten (#paranoia)
-      minRememberDuration = checkpointDuration * 2
+      minRememberDuration = checkpointDuration.get * 2
     }
-    if (rememberDuration == null || rememberDuration < minRememberDuration) {
-      rememberDuration = minRememberDuration
-    }
+    rememberExtent.set(minRememberDuration)
 
     // Initialize the dependencies
     dependenciesAsStreamsIgnoreThis.foreach(_.initialize(zeroTime))
@@ -244,53 +282,53 @@ abstract class DStream[T: ClassTag] (
   }
 
   private[streaming] def validateAtStart() {
-    require(rememberDuration != null, "Remember duration is set to null")
+    require(rememberExtent.isSet, "Remember extent is not set")
 
     require(
-      !mustCheckpoint || checkpointDuration != null,
+      !mustCheckpoint || checkpointDuration.isDefined || checkpointCount.isDefined,
       s"The checkpoint interval for ${this.getClass.getSimpleName} has not been set." +
         " Please use DStream.checkpoint() to set the interval."
     )
 
     require(
-     checkpointDuration == null || context.sparkContext.checkpointDir.isDefined,
+     checkpointDuration.isEmpty || context.sparkContext.checkpointDir.isDefined,
       "The checkpoint directory has not been set. Please set it by StreamingContext.checkpoint()."
     )
 
     require(
-      checkpointDuration == null || checkpointDuration >= slideDuration,
+      checkpointDuration.isEmpty || checkpointDuration.get >= slideDuration,
       s"The checkpoint interval for ${this.getClass.getSimpleName} has been set to " +
-        s"$checkpointDuration which is lower than its slide time ($slideDuration). " +
+        s"${checkpointDuration.get} which is lower than its slide time ($slideDuration). " +
         s"Please set it to at least $slideDuration."
     )
 
     require(
-      checkpointDuration == null || checkpointDuration.isMultipleOf(slideDuration),
+      checkpointDuration.isEmpty || checkpointDuration.get.isMultipleOf(slideDuration),
       s"The checkpoint interval for ${this.getClass.getSimpleName} has been set to " +
-        s" $checkpointDuration which not a multiple of its slide time ($slideDuration). " +
+        s" ${checkpointDuration.get} which not a multiple of its slide time ($slideDuration). " +
         s"Please set it to a multiple of $slideDuration."
     )
 
     require(
-      checkpointDuration == null || storageLevel != StorageLevel.NONE,
+      checkpointDuration.isEmpty || checkpointCount.isEmpty || storageLevel != StorageLevel.NONE,
       s"${this.getClass.getSimpleName} has been marked for checkpointing but the storage " +
         "level has not been set to enable persisting. Please use DStream.persist() to set the " +
         "storage level to use memory for better checkpointing performance."
     )
 
-    require(
-      checkpointDuration == null || rememberDuration > checkpointDuration,
-      s"The remember duration for ${this.getClass.getSimpleName} has been set to " +
-        s" $rememberDuration which is not more than the checkpoint interval" +
-        s" ($checkpointDuration). Please set it to a value higher than $checkpointDuration."
-    )
-
     dependenciesAsStreamsIgnoreThis.foreach(_.validateAtStart())
+
+    def checkpointIntervalFormatted: String = {
+      var list = ListBuffer.empty[String]
+      checkpointCount.foreach(count => list += s"$count event(s)")
+      checkpointDuration.foreach(duration => list += s"$duration")
+      list.mkString(" or ")
+    }
 
     logInfo(s"Slide time = $slideDuration")
     logInfo(s"Storage level = ${storageLevel.description}")
-    logInfo(s"Checkpoint interval = $checkpointDuration")
-    logInfo(s"Remember interval = $rememberDuration")
+    logInfo(s"Checkpoint interval = $checkpointIntervalFormatted")
+    logInfo(s"Remember extent = $rememberExtent")
     logInfo(s"Initialized and validated $this")
   }
 
@@ -311,12 +349,23 @@ abstract class DStream[T: ClassTag] (
     dependenciesAsStreamsIgnoreThis.foreach(_.setGraph(graph))
   }
 
-  private[streaming] def remember(duration: Duration) {
-    if (duration != null && (rememberDuration == null || duration > rememberDuration)) {
-      rememberDuration = duration
-      logInfo(s"Duration for remembering RDDs set to $rememberDuration for $this")
+  private def remember(extentSetter: => Boolean) {
+    if (extentSetter) {
+      logInfo(s"Extent for remembering RDDs set to $rememberExtent for $this")
     }
-    dependenciesAsStreamsIgnoreThis.foreach(_.remember(parentRememberDuration))
+    dependenciesAsStreamsIgnoreThis.foreach(_.remember(parentRememberExtent))
+  }
+
+  private[streaming] def remember(count: Int) {
+    remember(rememberExtent.set(count))
+  }
+
+  private[streaming] def remember(duration: Duration) {
+    remember(rememberExtent.set(duration))
+  }
+
+  private[streaming] def remember(extent: MaxEventExtent) {
+    remember(rememberExtent.set(extent))
   }
 
   /** Checks whether the 'time' is valid wrt slideDuration for generating RDD */
@@ -363,8 +412,8 @@ abstract class DStream[T: ClassTag] (
             newRDD.persist(storageLevel)
             logDebug(s"Persisting RDD ${newRDD.id} for time $event to $storageLevel")
           }
-          if (checkpointDuration != null
-            && (event.time - zeroTime).isMultipleOf(checkpointDuration)) {
+          if (checkpointDuration.isDefined
+            && (event.time - zeroTime).isMultipleOf(checkpointDuration.get)) {
             newRDD.checkpoint()
             logInfo(s"Marking RDD ${newRDD.id} for event $event for checkpointing")
           }

@@ -19,7 +19,7 @@ package org.apache.spark.streaming.scheduler
 
 import java.util.concurrent.CountDownLatch
 
-import org.apache.spark.streaming.event.TimerEvent
+import org.apache.spark.streaming.event.{MaxEventExtent, TimerEvent}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -86,8 +86,6 @@ class JobGeneratorSuite extends TestSuiteBase {
       ssc.checkpoint(checkpointDir.getAbsolutePath)
       ssc.start()
 
-      // Make sure the only 1 batch of information is to be remembered
-      assert(inputStream.rememberDuration === batchDuration)
       val receiverTracker = ssc.scheduler.receiverTracker
 
       // Get the blocks belonging to a batch
@@ -130,6 +128,15 @@ class JobGeneratorSuite extends TestSuiteBase {
       assert(getBlocksOfBatch(longBatchTime).nonEmpty, "blocks of incomplete batch already deleted")
       assert(batchCounter.getNumCompletedBatches < longBatchNumber)
       waitLatch.countDown()
+
+      // Make sure the only 1 batch of information is to be remembered
+      val inputStreamRememberExtent = new MaxEventExtent
+      inputStreamRememberExtent.set(batchDuration)
+
+      assert(inputStream.rememberCount ===
+        inputStreamRememberExtent.evalCount(inputStream.generatedEvents))
+      assert(inputStream.rememberDuration ===
+        inputStreamRememberExtent.evalDuration(inputStream.generatedEvents))
     }
   }
 }
