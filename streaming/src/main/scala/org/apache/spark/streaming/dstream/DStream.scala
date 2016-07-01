@@ -514,17 +514,20 @@ abstract class DStream[T: ClassTag] (
   }
 
   /**
-   * Clear metadata that are older than `rememberDuration` of this DStream.
+   * Clear metadata that are older than `rememberExtent` of this DStream.
    * This is an internal method that should not be called directly. This default
    * implementation clears the old generated RDDs. Subclasses of DStream may override
    * this to clear their own metadata along with the generated RDDs.
    */
   private[streaming] def clearMetadata(event: Event) {
     val unpersistData = ssc.conf.getBoolean("spark.streaming.unpersist", true)
-    val oldRDDs = generatedRDDs.filter(_._1.time <= (event.time - rememberDuration))
-    logDebug("Clearing references to old RDDs: [" +
+    val generatedEventsCut = generatedEvents.to(event)
+    val rddsToRememberCount = numberOfRDDsToRemember(generatedEventsCut)
+    val oldEvents = generatedEvents.take(generatedEventsCut.size - rddsToRememberCount)
+    val oldRDDs = generatedRDDs.filterKeys(oldEvents.contains)
+    logDebug(s"Number of RDDs to remember $rddsToRememberCount" +
+      ", clearing references to old RDDs: [" +
       oldRDDs.map(x => s"${x._1} -> ${x._2.id}").mkString(", ") + "]")
-    generatedRDDs --= oldRDDs.keys
     if (unpersistData) {
       logDebug(s"Unpersisting old RDDs: ${oldRDDs.values.map(_.id).mkString(", ")}")
       oldRDDs.foreach { case (oldEvent, rdd) =>
@@ -538,9 +541,25 @@ abstract class DStream[T: ClassTag] (
         }
       }
     }
-    logDebug(s"Cleared ${oldRDDs.size} RDDs that were older than " +
-      s"${event.time - rememberDuration}: ${oldRDDs.keys.mkString(", ")}")
+    val oldRDDsSize = oldRDDs.size
+    val oldRDDsKeys = oldRDDs.keys.mkString(", ")
+    generatedRDDs --= oldEvents
+    logDebug(s"Cleared $oldRDDsSize RDDs that were " +
+      s"$rememberExtent old: $oldRDDsKeys")
     dependenciesAsStreamsIgnoreThis.foreach(_.clearMetadata(event))
+  }
+
+  protected def numberOfRDDsToRemember(events: mutable.TreeSet[Event]): Int = {
+    var count = rememberExtent.evalCount(events)
+    // if checkpoint interval is set, the remember window should be greater than
+    // it such that the remember window should have at least one checkpointed rdd
+    if (checkpointDuration.isDefined || checkpointCount.isDefined) {
+      count = count max events.zipWithIndex
+        .filter { case (event, index) => generatedRDDs.get(event).exists(_.isCheckpointed) }
+        .lastOption.map { case (event, index) => events.size - index }
+        .getOrElse(count)
+    }
+    count
   }
 
   /**

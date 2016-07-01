@@ -165,11 +165,14 @@ class FileInputDStream[K, V, F <: NewInputFormat[K, V]](
   /** Clear the old time-to-files mappings along with old RDDs */
   protected[streaming] override def clearMetadata(event: Event) {
     batchEventToSelectedFiles.synchronized {
-      val oldFiles = batchEventToSelectedFiles.filter(_._1.time < (event.time - rememberDuration))
-      batchEventToSelectedFiles --= oldFiles.keys
+      val generatedEventsCut = generatedEvents.to(event)
+      val rddsToRememberCount = numberOfRDDsToRemember(generatedEventsCut)
+      val oldEvents = generatedEventsCut.take(generatedEventsCut.size - rddsToRememberCount)
+      val oldFiles = batchEventToSelectedFiles.filterKeys(oldEvents.contains)
+      batchEventToSelectedFiles --= oldEvents
       recentlySelectedFiles --= oldFiles.values.flatten
-      logInfo("Cleared " + oldFiles.size + " old files that were older than " +
-        (event.time - rememberDuration) + ": " + oldFiles.keys.mkString(", "))
+      logInfo("Cleared " + oldFiles.size + " old files that were " +
+        rememberExtent + " old: " + oldFiles.keys.mkString(", "))
       logDebug("Cleared files are:\n" +
         oldFiles.map(p => (p._1, p._2.mkString(", "))).mkString("\n"))
     }

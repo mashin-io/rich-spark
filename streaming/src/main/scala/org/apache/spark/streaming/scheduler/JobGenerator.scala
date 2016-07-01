@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.event._
-import org.apache.spark.streaming.{Milliseconds, Checkpoint, CheckpointWriter, Time}
+import org.apache.spark.streaming._
 import org.apache.spark.util.{EventLoop, ManualClock}
 
 import scala.util.{Failure, Success, Try}
@@ -289,9 +289,11 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       // If checkpointing is not enabled, then delete metadata information about
       // received blocks (block data not saved in any case). Otherwise, wait for
       // checkpointing of this batch to complete.
-      val maxRememberDuration = graph.getMaxInputStreamRememberDuration()
-      jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
-      jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+      val maxRememberDuration = graph.getMaxInputStreamRememberDuration(event)
+      if (maxRememberDuration > Duration(0)) {
+        jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
+        jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+      }
       markBatchFullyProcessed(event)
     }
   }
@@ -302,9 +304,11 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
 
     // All the checkpoint information about which batches have been processed, etc have
     // been saved to checkpoints, so its safe to delete block metadata and data WAL files
-    val maxRememberDuration = graph.getMaxInputStreamRememberDuration()
-    jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
-    jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+    val maxRememberDuration = graph.getMaxInputStreamRememberDuration(event)
+    if (maxRememberDuration > Duration(0)) {
+      jobScheduler.receiverTracker.cleanupOldBlocksAndBatches(event.time - maxRememberDuration)
+      jobScheduler.inputInfoTracker.cleanup(event.time - maxRememberDuration)
+    }
     markBatchFullyProcessed(event)
   }
 
