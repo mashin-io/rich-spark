@@ -113,6 +113,8 @@ private[streaming] class ReceivedBlockTracker(
       val unallocatedBlocks = getReceivedBlockQueue(streamId).dequeueAll(x => true)
       if (writeToLog(BatchAllocationEvent(streamId, batchEvent, unallocatedBlocks))) {
         allocatedBlocks.put(batchEvent, unallocatedBlocks)
+        logDebug(s"${unallocatedBlocks.size} block(s) had been allocated" +
+          s" to stream ${streamId} on event $batchEvent")
       } else {
         logInfo(s"Possibly processed batch ($batchEvent, stream:$streamId)" +
           " needs to be processed again in WAL recovery")

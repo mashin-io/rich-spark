@@ -58,7 +58,7 @@ object StreamInputInfo {
  */
 private[streaming] class InputInfoTracker(ssc: StreamingContext) extends Logging {
 
-  // Map to track all the InputInfo related to specific batch time and input stream.
+  // Map to track all the InputInfo related to specific batch event and input stream.
   private val batchEventToInputInfos =
     new mutable.HashMap[Event, mutable.HashMap[Int, StreamInputInfo]]
 
@@ -69,7 +69,7 @@ private[streaming] class InputInfoTracker(ssc: StreamingContext) extends Logging
 
     if (inputInfos.contains(inputInfo.inputStreamId)) {
       throw new IllegalStateException(s"Input stream ${inputInfo.inputStreamId} for batch" +
-        s"$batchEvent is already added into InputInfoTracker, this is a illegal state")
+        s" $batchEvent is already added into InputInfoTracker, this is an illegal state")
     }
     inputInfos += ((inputInfo.inputStreamId, inputInfo))
   }
