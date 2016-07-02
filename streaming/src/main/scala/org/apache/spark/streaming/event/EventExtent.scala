@@ -23,6 +23,42 @@ class DurationExtentNode(val duration: Duration) extends ExtentNode[Duration](du
   override def toString: String = s"$duration"
 }
 
+/**
+ * This class represents an extent over a sequence of events on a timeline.
+ * An extent describes the length of a window of contiguous events on the
+ * timeline. Window length could be described by the number of events within
+ * , a time duration or both such that for a sequence of events on a timeline
+ * , the extent could be evaluated to the total number of events or the total
+ * duration that is covered by the extent.
+ *
+ * An extent is described by one or more sequences of events counts and durations.
+ * For example, an extent could be as simple as [2 events] or [2 seconds] or more
+ * complex like [1 event -> 1 second -> 5 events] or even more complex like
+ * [ [2 events] or [2 seconds] or [1 event -> 1 second -> 5 events] ].
+ *
+ * The multiple sequences describing an extent are all evaluated to the corresponding
+ * length (either a count or a duration) and depending on a limiting criterion
+ * , only one length is selected (either the maximum in case of `MaxEventExtent` or
+ * the minimum in case of `MinEventExtent`).
+ * {{{
+ *    0--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|-->
+ *    1s 2s 3s 4s 5s 6s 7s 8s 9s 10s ...
+ *
+ * Given this sequence of events:
+ *    0--|--|----|---|-------|-->
+ *      (1)(2)  (3) (4)     (5)
+ *
+ * Extent [2 events]:                 Extent [2 seconds]:
+ *  covers events = {5, 4}              covers events = {5}
+ *  evalCount = 2 events                evalCount = 1 event
+ *  evalDuration = 4 seconds            evalDuration = 2 seconds
+ *
+ * Extent [2 events -> 2 seconds]
+ *  covers events = {5, 4, 3}
+ *  evalCount = 3 events
+ *  evalDuration = 6 seconds
+ * }}}
+ */
 private[streaming]
 abstract class EventExtent extends Serializable with Logging {
   val roots = ListBuffer.empty[ExtentNode[_]]
@@ -180,18 +216,20 @@ abstract class EventExtent extends Serializable with Logging {
 
     def evalNode(node: ExtentNode[_], remainingEvents: Seq[Event]): (Int, Duration) = {
       val lastEvent = remainingEvents.last
-      val cutIndex = node match {
+      node match {
         case countExtentNode: CountExtentNode =>
-          if (remainingEvents.size > countExtentNode.count) {
+          val cutIndex = if (remainingEvents.size > countExtentNode.count) {
             remainingEvents.size - countExtentNode.count
           } else {
             0
           }
+          (cutIndex, lastEvent.time - remainingEvents((cutIndex - 1) max 0).time)
         case durationExtentNode: DurationExtentNode =>
           val minExtentTime = lastEvent.time - durationExtentNode.duration
-          remainingEvents.indexWhere(_.time > minExtentTime)
+          val cutIndex = remainingEvents.indexWhere(_.time > minExtentTime)
+          (cutIndex, lastEvent.time - remainingEvents((cutIndex - 1) max 0).time min
+            durationExtentNode.duration)
       }
-      (cutIndex, lastEvent.time - remainingEvents((cutIndex - 1) max 0).time)
     }
 
     @tailrec def eval(

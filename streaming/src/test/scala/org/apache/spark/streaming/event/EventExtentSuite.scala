@@ -12,6 +12,23 @@ class EventExtentSuite extends TestSuiteBase {
     new mutable.TreeSet[Event]()(Event.ordering) ++ set
   }
 
+  test("copy") {
+    val r1 = new MaxEventExtent
+    r1.set(1)
+    r1.set(Seconds(1))
+
+    val r2 = r1.copy
+
+    assert(r1.leaves.forall(l1 => r2.leaves.forall(l2 => l1.hashCode() != l2.hashCode())))
+
+    val events = (1 to 10).map(i => TimerEvent(timer, Time(i * 1000), i)).toSet
+    assert(r1.evalCount(events) == r2.evalCount(events))
+    assert(r1.evalDuration(events) == r2.evalDuration(events))
+
+    assert(!(new DurationExtentNode(Milliseconds(500)).hashCode() ===
+      new DurationExtentNode(Milliseconds(500)).hashCode()))
+  }
+
   test("set") {
     val r = new MaxEventExtent
     var expectedNodes = 0
@@ -33,7 +50,7 @@ class EventExtentSuite extends TestSuiteBase {
     set(duration = Some(Seconds(2)), shouldSet = false)
   }
 
-  test("eval") {
+  test("eval - relative") {
     def eval(r: MaxEventExtent) {
       val events = (1 to 10).map(i => TimerEvent(timer, Time(i * 1000), i)).toSet
       val r2 = new MaxEventExtent
@@ -60,21 +77,52 @@ class EventExtentSuite extends TestSuiteBase {
     eval(r)
   }
 
-  test("copy") {
-    val r1 = new MaxEventExtent
-    r1.set(1)
-    r1.set(Seconds(1))
+  test("eval") {
+    val events: SortedSet[Event] = Set(
+      TimerEvent(timer, Time(2000), 0),
+      TimerEvent(timer, Time(3000), 1),
+      TimerEvent(timer, Time(4500), 2),
+      TimerEvent(timer, Time(6000), 3),
+      TimerEvent(timer, Time(8500), 4))
 
-    val r2 = r1.copy
+    def testCase(
+        expectedCount: Int,
+        expectedDuration: Duration,
+        block: MaxEventExtent => MaxEventExtent) {
+      var r = new MaxEventExtent
+      r = block(r)
+      println(s"Extent $r =>")
+      println(s"\tcovered events = ${events.takeRight(r.evalCount(events))
+          .map(_.index).mkString("{", ", " , "}")}")
+      println(s"\tevalCount = ${r.evalCount(events)}")
+      println(s"\tevalDuration = ${r.evalDuration(events)}")
+      assert(r.evalCount(events) == expectedCount)
+      assert(r.evalDuration(events) == expectedDuration)
+    }
 
-    assert(r1.leaves.forall(l1 => r2.leaves.forall(l2 => l1.hashCode() != l2.hashCode())))
+    testCase(1, Duration(1000), {r => r.set(Duration(1000)); r})
+    testCase(1, Duration(1500), {r => r.set(Duration(1500)); r})
+    testCase(1, Duration(2000), {r => r.set(Duration(2000)); r})
+    testCase(1, Duration(2500), {r => r.set(Duration(2500)); r})
+    testCase(2, Duration(3000), {r => r.set(Duration(3000)); r})
+    testCase(2, Duration(3500), {r => r.set(Duration(3500)); r})
+    testCase(2, Duration(4000), {r => r.set(Duration(4000)); r})
+    testCase(3, Duration(4500), {r => r.set(Duration(4500)); r})
+    testCase(3, Duration(5000), {r => r.set(Duration(5000)); r})
+    testCase(3, Duration(5500), {r => r.set(Duration(5500)); r})
+    testCase(4, Duration(6000), {r => r.set(Duration(6000)); r})
+    testCase(4, Duration(6500), {r => r.set(Duration(6500)); r})
+    testCase(5, Duration(6500), {r => r.set(Duration(7000)); r})
+    testCase(5, Duration(6500), {r => r.set(Duration(7500)); r})
 
-    val events = (1 to 10).map(i => TimerEvent(timer, Time(i * 1000), i)).toSet
-    assert(r1.evalCount(events) == r2.evalCount(events))
-    assert(r1.evalDuration(events) == r2.evalDuration(events))
+    testCase(1, Duration(2500), {r => r.set(1); r})
+    testCase(2, Duration(4000), {r => r.set(2); r})
+    testCase(3, Duration(5500), {r => r.set(3); r})
+    testCase(4, Duration(6500), {r => r.set(4); r})
+    testCase(5, Duration(6500), {r => r.set(5); r})
+    testCase(5, Duration(6500), {r => r.set(6); r})
 
-    assert(!(new DurationExtentNode(Milliseconds(500)).hashCode() ===
-      new DurationExtentNode(Milliseconds(500)).hashCode()))
+    testCase(4, Duration(6000), {r => r.set(2); r + Duration(2000)})
   }
 
 }
