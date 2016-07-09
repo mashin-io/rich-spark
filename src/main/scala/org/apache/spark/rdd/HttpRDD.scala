@@ -16,14 +16,16 @@
 
 package org.apache.spark.rdd
 
+import scala.reflect.ClassTag
+
 import org.apache.http.client.methods.HttpUriRequest
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.http.{HttpRequest, HttpResponse}
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark._
-import org.apache.spark.api.java.function.{Function2, Function}
 
-import scala.reflect.ClassTag
+import org.apache.spark._
+import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.api.java.function.{Function, Function2}
+import org.apache.spark.internal.Logging
 
 private[spark] class HttpPartition(val idx: Int) extends Partition {
   override def index: Int = idx

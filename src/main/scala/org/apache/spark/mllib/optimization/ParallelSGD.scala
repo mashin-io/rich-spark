@@ -16,16 +16,18 @@
 
 package org.apache.spark.mllib.optimization
 
-import breeze.linalg.{DenseVector => BDV, Vector => BV, norm}
-import org.apache.spark.annotation.{DeveloperApi, Experimental}
-import org.apache.spark.mllib.linalg.{Vector, Vectors}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.util.random.{RandomSampler, BernoulliSampler}
-import org.apache.spark.{Logging, Partitioner}
-
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 import scala.util.Random
+
+import breeze.linalg.{DenseVector => BDV, Vector => BV, norm}
+
+import org.apache.spark.Partitioner
+import org.apache.spark.annotation.{DeveloperApi, Experimental}
+import org.apache.spark.internal.Logging
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.util.random.{BernoulliSampler, RandomSampler}
 
 private[spark] class RandomPartitioner(val n: Int) extends Partitioner {
   val random = new Random(System.nanoTime)
