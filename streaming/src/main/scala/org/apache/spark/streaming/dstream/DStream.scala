@@ -1365,7 +1365,7 @@ abstract class DStream[T: ClassTag] (
    * The file name at each batch interval is generated based on `prefix` and
    * `suffix`: "prefix-TIME_IN_MS.suffix".
    */
-  def saveAsObjectFiles(prefix: String, suffix: String = ""): Unit = ssc.withScope {
+  def saveAsObjectFiles(prefix: String, suffix: String = ""): DStream[T] = ssc.withScope {
     val saveFunc = (rdd: RDD[T], time: Time) => {
       val file = rddToFileName(prefix, suffix, time)
       rdd.saveAsObjectFile(file)
@@ -1378,7 +1378,7 @@ abstract class DStream[T: ClassTag] (
    * of elements. The file name at each batch interval is generated based on
    * `prefix` and `suffix`: "prefix-TIME_IN_MS.suffix".
    */
-  def saveAsTextFiles(prefix: String, suffix: String = ""): Unit = ssc.withScope {
+  def saveAsTextFiles(prefix: String, suffix: String = ""): DStream[T] = ssc.withScope {
     val saveFunc = (rdd: RDD[T], time: Time) => {
       val file = rddToFileName(prefix, suffix, time)
       rdd.saveAsTextFile(file)

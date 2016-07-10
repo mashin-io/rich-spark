@@ -1189,7 +1189,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
   def saveAsHadoopFiles[F <: OutputFormat[K, V]](
       prefix: String,
       suffix: String
-    )(implicit fm: ClassTag[F]): Unit = ssc.withScope {
+    )(implicit fm: ClassTag[F]): DStream[(K, V)] = ssc.withScope {
     saveAsHadoopFiles(prefix, suffix, keyClass, valueClass,
       fm.runtimeClass.asInstanceOf[Class[F]])
   }
@@ -1205,7 +1205,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       valueClass: Class[_],
       outputFormatClass: Class[_ <: OutputFormat[_, _]],
       conf: JobConf = new JobConf(ssc.sparkContext.hadoopConfiguration)
-    ): Unit = ssc.withScope {
+    ): DStream[(K, V)] = ssc.withScope {
     // Wrap conf in SerializableWritable so that ForeachDStream can be serialized for checkpoints
     val serializableConf = new SerializableJobConf(conf)
     val saveFunc = (rdd: RDD[(K, V)], time: Time) => {
@@ -1223,7 +1223,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
   def saveAsNewAPIHadoopFiles[F <: NewOutputFormat[K, V]](
       prefix: String,
       suffix: String
-    )(implicit fm: ClassTag[F]): Unit = ssc.withScope {
+    )(implicit fm: ClassTag[F]): DStream[(K, V)] = ssc.withScope {
     saveAsNewAPIHadoopFiles(prefix, suffix, keyClass, valueClass,
       fm.runtimeClass.asInstanceOf[Class[F]])
   }
@@ -1239,7 +1239,7 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       valueClass: Class[_],
       outputFormatClass: Class[_ <: NewOutputFormat[_, _]],
       conf: Configuration = ssc.sparkContext.hadoopConfiguration
-    ): Unit = ssc.withScope {
+    ): DStream[(K, V)] = ssc.withScope {
     // Wrap conf in SerializableWritable so that ForeachDStream can be serialized for checkpoints
     val serializableConf = new SerializableConfiguration(conf)
     val saveFunc = (rdd: RDD[(K, V)], time: Time) => {
