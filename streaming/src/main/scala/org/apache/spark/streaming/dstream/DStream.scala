@@ -416,8 +416,11 @@ abstract class DStream[T: ClassTag] (
           generatedEvents += event
           if (checkpointDuration.isDefined || checkpointCount.isDefined) {
             // compute events count and duration since last checkpoint
-            val count = event.index - lastCheckpointEvent.map(_.index).getOrElse(-1L)
-            val duration = event.time - lastCheckpointEvent.map(_.time).getOrElse(zeroTime)
+            val lastCheckpointTime = lastCheckpointEvent.map(_.time).getOrElse(zeroTime)
+            val count = generatedEvents.count { e =>
+              e.time >= lastCheckpointTime && e.time <= event.time
+            }
+            val duration = event.time - lastCheckpointTime
             // whether `checkpointCount` or `checkpointDuration` passed since last checkpoint
             val checkpointOnCount = checkpointCount.exists(count >= _)
             val checkpointOnDuration = checkpointDuration.exists(duration >= _)
