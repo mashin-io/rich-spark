@@ -72,10 +72,11 @@ class TailWindowedDStream[T: ClassTag](
 
   override def slideDuration: Duration = parent.slideDuration * _slideLength
 
-  override def parentRememberExtent: MaxEventExtent = rememberExtent + (_windowLength + _skipLength)
+  override def parentRememberExtent: MaxEventExtent =
+    rememberExtent + (_windowLength + _skipLength)
 
   override def shouldCompute(event: Event): Boolean = {
-    (event.index + 1) % _slideLength == 0
+    passedEventsCounter % _slideLength == 0
   }
 }
 

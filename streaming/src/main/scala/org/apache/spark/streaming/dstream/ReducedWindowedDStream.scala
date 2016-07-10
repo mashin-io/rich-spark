@@ -182,7 +182,7 @@ class ReducedTailWindowedDStream[K: ClassTag, V: ClassTag](
   override def parentRememberExtent: MaxEventExtent = rememberExtent + (windowLength + skipLength)
 
   override def shouldCompute(event: Event): Boolean = {
-    (event.index + 1) % slideLength == 0
+    passedEventsCounter % slideLength == 0
   }
 }
 

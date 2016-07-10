@@ -91,6 +91,9 @@ abstract class DStream[T: ClassTag] (
   //TODO: Limit the storage of generatedEvents, How?
   private[streaming] val generatedEvents = new mutable.TreeSet[Event]()(Event.ordering)
 
+  // A counter used to count unique events to which this stream should react
+  private[streaming] var passedEventsCounter: Long = 0
+
   // RDDs generated, marked as private[streaming] so that testsuites can access it
   @transient
   private[streaming] var generatedRDDs = new mutable.LinkedHashMap[Event, RDD[T]]()
@@ -395,6 +398,10 @@ abstract class DStream[T: ClassTag] (
       // - or stream is not bound to any event source
       // or else generate nothing.
       if (boundEventSources.isEmpty || boundEventSources(event.eventSource)) {
+
+        if (!generatedEvents.contains(event)) {
+          passedEventsCounter += 1
+        }
 
         val rddOption = createRDDWithLocalProperties(event, displayInnerRDDOps = false) {
           // Disable checks for existing output directories in jobs launched by the streaming
