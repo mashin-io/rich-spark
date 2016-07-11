@@ -15,6 +15,7 @@ Table of contents
     * [Cascaded Jobs](#cascaded-jobs)
       * [Dependency Operations](#dependency-operations)
     * [Default Timer](#default-timer)
+  * [DStream Output Operations](#dstream-output-operations)
   * [DStream Checkpoint Interval](#dstream-checkpoint-interval)
 
 <a name="overview"/>
@@ -203,6 +204,10 @@ Operation | Meaning
 <a name="default-timer"/>
 ###Default Timer
 If an output operation is not bound to any event source, Spark binds it to a default timer event source when the streaming context is started. The default timer starts immediately when the context starts and has an infinite end time. The default timer has a period that equals the `batchDuration` with which the streaming context is configured. This is to stay compatible with the legacy Spark streaming API.
+
+<a name="dstream-output-operations"/>
+##DStream Output Operations
+Output operations of streams like `print`, `saveAs*Files` and `foreachRDD` in the legacy streaming API return nothing. Those operations are supposed to trigger the actual computations on the data pushing the output to external systems. However in the reactive context, in order to enable job cascading, output operations now return a `DStream`. The returned stream performs an identity `map` on the RDDs of the parent stream hence, effectively, the returned stream is the same as the parent stream.
 
 <a name="dstream-checkpoint-interval"/>
 ##DStream Checkpoint Interval
