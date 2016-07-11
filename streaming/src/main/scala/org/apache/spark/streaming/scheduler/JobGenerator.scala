@@ -55,6 +55,8 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   // in the context and the generator has been started.
   private lazy val shouldCheckpoint = ssc.checkpointDuration != null && ssc.checkpointDir != null
 
+  private var lastCheckpointEvent: Option[Event] = None
+
   private lazy val checkpointWriter = if (shouldCheckpoint) {
     new CheckpointWriter(this, ssc.conf, ssc.checkpointDir, ssc.sparkContext.hadoopConfiguration)
   } else {
@@ -314,7 +316,18 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
 
   /** Perform checkpoint for the given `event`. */
   private def doCheckpoint(event: Event, clearCheckpointDataLater: Boolean) {
-    if (shouldCheckpoint && (event.time - graph.zeroTime).isMultipleOf(ssc.checkpointDuration)) {
+    val durationSinceLastCheckpoint = lastCheckpointEvent
+      .map(event.time - _.time)
+      // or else checkpoint on first event
+      .getOrElse(ssc.checkpointDuration)
+    // should checkpoint in case of
+    // - it is the first event,
+    // - at least checkpoint duration has elapsed since last checkpoint, or
+    // - it is the same event that has been last checkpointed as checkpoint
+    //  is done twice for the same event
+    if (shouldCheckpoint && (lastCheckpointEvent.contains(event)  ||
+      durationSinceLastCheckpoint >= ssc.checkpointDuration)) {
+      lastCheckpointEvent = Some(event)
       logInfo("Checkpointing graph for event " + event)
       ssc.graph.updateCheckpointData(event)
       checkpointWriter.write(new Checkpoint(ssc, event), clearCheckpointDataLater)
