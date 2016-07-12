@@ -261,12 +261,6 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
     ssc.sparkContext.setLocalProperty(RDD.CHECKPOINT_ALL_MARKED_ANCESTORS, "true")
     Try {
-      //TODO: This is now done by each receiver input dstream compute method
-      //// allocate received blocks to batch
-      //graph.getBoundStreams(event.eventSource)
-      //  .filter(_.isInstanceOf[ReceiverInputDStream[_]])
-      //  .map(_.asInstanceOf[ReceiverInputDStream[_]].id)
-      //  .foreach(jobScheduler.receiverTracker.allocateBlocksToBatch(event, _))
       graph.generateJobs(event) // generate jobs using allocated block
     } match {
       case Success(jobs) =>
