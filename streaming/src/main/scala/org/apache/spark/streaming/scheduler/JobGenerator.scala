@@ -257,7 +257,6 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
 
   /** Generate jobs and perform checkpoint for the given `event`.  */
   private def generateJobs(event: Event) {
-    remainingEventsCount.incrementAndGet()
     // Checkpoint all RDDs marked for checkpointing to ensure their lineages are
     // truncated periodically. Otherwise, we may run into stack overflows (SPARK-6847).
     ssc.sparkContext.setLocalProperty(RDD.CHECKPOINT_ALL_MARKED_ANCESTORS, "true")
@@ -273,6 +272,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       case Success(jobs) =>
         val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(event)
         jobScheduler.submitJobSet(JobSet(event, jobs, streamIdToInputInfos))
+        remainingEventsCount.incrementAndGet()
       case Failure(e) =>
         jobScheduler.reportError(s"Error generating jobs for event $event", e)
     }
@@ -332,7 +332,6 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       ssc.graph.updateCheckpointData(event)
       checkpointWriter.write(new Checkpoint(ssc, event), clearCheckpointDataLater)
     } else if (clearCheckpointDataLater) {
-      //TODO: validate this condition and raise an issue
       markBatchFullyProcessed(event)
     }
   }
