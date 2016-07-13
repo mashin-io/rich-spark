@@ -92,4 +92,8 @@ abstract class EventSource(
     new MappedEventSource(this, f)
   }
 
+  final def filter(filterFunc: Event => Boolean): EventSource = {
+    new FilteredEventSource(this, filterFunc)
+  }
+
 }
