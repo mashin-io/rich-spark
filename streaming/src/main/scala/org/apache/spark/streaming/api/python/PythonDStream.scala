@@ -28,9 +28,10 @@
 //import org.apache.spark.api.java._
 //import org.apache.spark.rdd.RDD
 //import org.apache.spark.storage.StorageLevel
-//import org.apache.spark.streaming.{Duration, Interval, Time}
+//import org.apache.spark.streaming._
 //import org.apache.spark.streaming.api.java._
 //import org.apache.spark.streaming.dstream._
+//import org.apache.spark.streaming.event.{MaxEventExtent, Event}
 //import org.apache.spark.util.Utils
 //
 ///**
@@ -68,21 +69,21 @@
 // * deserialized by Java.
 // */
 //private[python] class TransformFunction(@transient var pfunc: PythonTransformFunction)
-//  extends function.Function2[JList[JavaRDD[_]], Time, JavaRDD[Array[Byte]]] {
+//  extends function.Function2[JList[JavaRDD[_]], Event, JavaRDD[Array[Byte]]] {
 //
-//  def apply(rdd: Option[RDD[_]], time: Time): Option[RDD[Array[Byte]]] = {
+//  def apply(rdd: Option[RDD[_]], event: Event): Option[RDD[Array[Byte]]] = {
 //    val rdds = List(rdd.map(JavaRDD.fromRDD(_)).orNull).asJava
-//    Option(callPythonTransformFunction(time.milliseconds, rdds)).map(_.rdd)
+//    Option(callPythonTransformFunction(event.time.milliseconds, rdds)).map(_.rdd)
 //  }
 //
-//  def apply(rdd: Option[RDD[_]], rdd2: Option[RDD[_]], time: Time): Option[RDD[Array[Byte]]] = {
+//  def apply(rdd: Option[RDD[_]], rdd2: Option[RDD[_]], event: Event): Option[RDD[Array[Byte]]] = {
 //    val rdds = List(rdd.map(JavaRDD.fromRDD(_)).orNull, rdd2.map(JavaRDD.fromRDD(_)).orNull).asJava
-//    Option(callPythonTransformFunction(time.milliseconds, rdds)).map(_.rdd)
+//    Option(callPythonTransformFunction(event.time.milliseconds, rdds)).map(_.rdd)
 //  }
 //
 //  // for function.Function2
-//  def call(rdds: JList[JavaRDD[_]], time: Time): JavaRDD[Array[Byte]] = {
-//    callPythonTransformFunction(time.milliseconds, rdds)
+//  def call(rdds: JList[JavaRDD[_]], event: Event): JavaRDD[Array[Byte]] = {
+//    callPythonTransformFunction(event.time.milliseconds, rdds)
 //  }
 //
 //  private def callPythonTransformFunction(time: Long, rdds: JList[_]): JavaRDD[Array[Byte]] = {
@@ -173,7 +174,8 @@
 //   */
 //  def callForeachRDD(jdstream: JavaDStream[Array[Byte]], pfunc: PythonTransformFunction) {
 //    val func = new TransformFunction((pfunc))
-//    jdstream.dstream.foreachRDD((rdd, time) => func(Some(rdd), time))
+//    jdstream.dstream.foreachRDD { (rdd: RDD[Array[Byte]], event: Event) =>
+//      val dummy = func(Some(rdd), event) }
 //  }
 //
 //  /**
@@ -196,7 +198,7 @@
 //
 //  val func = new TransformFunction(pfunc)
 //
-//  override def dependencies: List[DStream[_]] = List(parent)
+//  override def dependencies: List[Dependency[_]] = List(new EventDependency(parent))
 //
 //  override def slideDuration: Duration = parent.slideDuration
 //
@@ -211,10 +213,10 @@
 //    pfunc: PythonTransformFunction)
 //  extends PythonDStream(parent, pfunc) {
 //
-//  override def compute(validTime: Time): Option[RDD[Array[Byte]]] = {
-//    val rdd = parent.getOrCompute(validTime)
+//  override def compute(event: Event): Option[RDD[Array[Byte]]] = {
+//    val rdd = dependencies.head.rdds(event).headOption
 //    if (rdd.isDefined) {
-//      func(rdd, validTime)
+//      func(rdd, event)
 //    } else {
 //      None
 //    }
@@ -232,15 +234,17 @@
 //
 //  val func = new TransformFunction(pfunc)
 //
-//  override def dependencies: List[DStream[_]] = List(parent, parent2)
+//  override def dependencies: List[Dependency[_]] = List(
+//    new EventDependency(parent),
+//    new EventDependency(parent2))
 //
 //  override def slideDuration: Duration = parent.slideDuration
 //
-//  override def compute(validTime: Time): Option[RDD[Array[Byte]]] = {
+//  override def compute(event: Event): Option[RDD[Array[Byte]]] = {
 //    val empty: RDD[_] = ssc.sparkContext.emptyRDD
-//    val rdd1 = parent.getOrCompute(validTime).getOrElse(empty)
-//    val rdd2 = parent2.getOrCompute(validTime).getOrElse(empty)
-//    func(Some(rdd1), Some(rdd2), validTime)
+//    val rdd1 = dependencies.head.rdds(event).headOption.getOrElse(empty)
+//    val rdd2 = dependencies.last.rdds(event).headOption.getOrElse(empty)
+//    func(Some(rdd1), Some(rdd2), event)
 //  }
 //
 //  val asJavaDStream: JavaDStream[Array[Byte]] = JavaDStream.fromDStream(this)
@@ -264,14 +268,19 @@
 //    reduceFunc: PythonTransformFunction,
 //    initialRDD: JavaRDD[Array[Byte]]) = this(parent, reduceFunc, Some(initialRDD.rdd))
 //
+//  override def dependencies: List[Dependency[_]] = {
+//    List(new TailDependency[Array[Byte]](this, skip = 0, size = 1, computeEvent = false),
+//      new EventDependency[Array[Byte]](parent))
+//  }
+//
 //  super.persist(StorageLevel.MEMORY_ONLY)
 //  override val mustCheckpoint = true
 //
-//  override def compute(validTime: Time): Option[RDD[Array[Byte]]] = {
-//    val lastState = getOrCompute(validTime - slideDuration)
-//    val rdd = parent.getOrCompute(validTime)
+//  override def compute(event: Event): Option[RDD[Array[Byte]]] = {
+//    val lastState = dependencies.head.rdds(event).headOption.map(_.asInstanceOf[RDD[Array[Byte]]])
+//    val rdd = dependencies.last.rdds(event).headOption.map(_.asInstanceOf[RDD[Array[Byte]]])
 //    if (rdd.isDefined) {
-//      func(lastState.orElse(initialRDD), rdd, validTime)
+//      func(lastState.orElse(initialRDD), rdd, event)
 //    } else {
 //      lastState
 //    }
@@ -299,7 +308,7 @@
 //
 //  override def slideDuration: Duration = _slideDuration
 //
-//  override def parentRememberDuration: Duration = rememberDuration + windowDuration
+//  override def parentRememberExtent: MaxEventExtent = rememberExtent + windowDuration
 //
 //  override def compute(validTime: Time): Option[RDD[Array[Byte]]] = {
 //    val currentTime = validTime
