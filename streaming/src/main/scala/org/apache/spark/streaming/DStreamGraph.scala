@@ -62,7 +62,11 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
       val timer = ssc.timer(time + batchDuration, Time(Long.MaxValue),
         batchDuration, "DefaultTimer")
       defaultTimer = Some(timer)
-      defaultTimerStreams.foreach(_.bind(timer))
+      // Output streams that are not bound to any other
+      // event source should be bound to the default timer
+      defaultTimerStreams
+        .filter(_.boundEventSources.isEmpty)
+        .foreach(_.bind(timer))
       defaultTimerStreams.clear()
       defaultTimerListeners.foreach(timer.addListener)
       defaultTimerListeners.clear()
