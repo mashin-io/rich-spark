@@ -27,7 +27,8 @@ class TimerEventSource(
     if (startTime < currTime) {
       // if start time already elapsed, start from the next possible
       // period after current time
-      nextTime = startTime + period * (1 + (currTime - startTime) / period).toInt
+      nextTime = startTime + Duration(period.milliseconds *
+        (1 + (currTime - startTime) / period).toLong)
     } else {
       nextTime = startTime
     }
