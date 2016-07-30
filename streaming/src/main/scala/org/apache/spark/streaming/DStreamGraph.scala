@@ -214,7 +214,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def clearMetadata(event: Event) {
     logDebug("Clearing metadata for event " + event)
     this.synchronized {
-      getOutputStreams().foreach(_.clearMetadata(event))
+      getBoundStreams(event.eventSource).foreach(_.clearMetadata(event))
     }
     logDebug("Cleared old metadata for event " + event)
   }
@@ -222,7 +222,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def updateCheckpointData(event: Event) {
     logInfo("Updating checkpoint data for event " + event)
     this.synchronized {
-      getOutputStreams().foreach(_.updateCheckpointData(event))
+      getBoundStreams(event.eventSource).foreach(_.updateCheckpointData(event))
     }
     logInfo("Updated checkpoint data for event " + event)
   }
@@ -230,7 +230,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def clearCheckpointData(event: Event) {
     logInfo("Clearing checkpoint data for event " + event)
     this.synchronized {
-      getOutputStreams().foreach(_.clearCheckpointData(event))
+      getBoundStreams(event.eventSource).foreach(_.clearCheckpointData(event))
     }
     logInfo("Cleared checkpoint data for event " + event)
   }
