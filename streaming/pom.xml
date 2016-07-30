@@ -52,6 +52,11 @@
       </exclusions>
     </dependency>
 
+    <dependency>
+      <groupId>io.reactivex</groupId>
+      <artifactId>rxscala_${scala.binary.version}</artifactId>
+    </dependency>
+
     <!-- Explicit listing of transitive deps that are shaded. Otherwise, odd compiler crashes. -->
     <dependency>
       <groupId>com.google.guava</groupId>
