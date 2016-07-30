@@ -3,6 +3,8 @@ package org.apache.spark.streaming.event
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.function.{Consumer, Predicate}
 
+import rx.lang.scala.Observable
+
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.{Time, StreamingContext}
@@ -94,6 +96,17 @@ abstract class EventSource(
 
   final def filter(filterFunc: Event => Boolean): EventSource = {
     new FilteredEventSource(this, filterFunc)
+  }
+
+  final def toObservable: Observable[Event] = {
+    Observable.apply[Event](subscriber => {
+      EventSource.this.addListener(new EventListener {
+        override def onEvent(event: Event): Unit = {
+          subscriber.onNext(event)
+        }
+      })
+      start()
+    })
   }
 
 }
