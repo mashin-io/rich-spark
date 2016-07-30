@@ -32,6 +32,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io.{BytesWritable, LongWritable, Text}
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat}
+import rx.lang.scala.Observable
 
 import org.apache.spark._
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
@@ -44,7 +45,7 @@ import org.apache.spark.serializer.SerializationDebugger
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.StreamingContextState._
 import org.apache.spark.streaming.dstream._
-import org.apache.spark.streaming.event.{Event, TimerEvent, TimerEventSource}
+import org.apache.spark.streaming.event.{ObservableEventSource, Event, TimerEvent, TimerEventSource}
 import org.apache.spark.streaming.receiver.Receiver
 import org.apache.spark.streaming.scheduler.{ExecutorAllocationManager, JobScheduler, StreamingListener}
 import org.apache.spark.streaming.ui.{StreamingJobProgressListener, StreamingTab}
@@ -301,6 +302,13 @@ class StreamingContext private[streaming] (
       name: String)
     : TimerEventSource = {
     new TimerEventSource(this, startTime, endTime, period, name)
+  }
+
+  def rxEventSource[T: ClassTag](
+      observableGenerator: => Observable[T],
+      name: String)
+    : ObservableEventSource[T] = {
+    new ObservableEventSource[T](this, observableGenerator, name)
   }
 
   /**
