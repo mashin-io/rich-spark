@@ -3,12 +3,7 @@ package org.apache.spark.streaming.event
 
 import java.util.concurrent.atomic.AtomicLong
 
-import org.apache.spark.SparkException
-import org.apache.spark.internal.Logging
-import org.apache.spark.streaming.{Time, StreamingContext}
-import org.apache.spark.util.ListenerBus
-
-import scala.runtime.ScalaRunTime
+import org.apache.spark.streaming.Time
 
 abstract class Event(
     val eventSource: EventSource,
@@ -18,20 +13,20 @@ abstract class Event(
 
   val instanceId: Long = Event.nextInstanceId
 
-  override def hashCode(): Int = {
-    ScalaRunTime._hashCode((eventSource.toProduct, index, time))
-  }
+  //override def hashCode(): Int = {
+  //  ScalaRunTime._hashCode((eventSource.toProduct, index, time))
+  //}
 
-  override def equals(other: Any): Boolean = {
-    other match {
-      case otherEvent: Event =>
-        (instanceId == otherEvent.instanceId) ||
-          (eventSource.equals(otherEvent.eventSource) &&
-            index == otherEvent.index &&
-            time.equals(otherEvent.time))
-      case _ => false
-    }
-  }
+  //override def equals(other: Any): Boolean = {
+  //  other match {
+  //    case otherEvent: Event =>
+  //      (instanceId == otherEvent.instanceId) ||
+  //        (eventSource.equals(otherEvent.eventSource) &&
+  //          index == otherEvent.index &&
+  //          time.equals(otherEvent.time))
+  //    case _ => false
+  //  }
+  //}
 
 }
 
