@@ -6,6 +6,7 @@ Table of contents
   * [Event](#event)
   * [Event Source](#event-source)
     * [Operations on Event Sources](#operations-on-event-sources)
+      * [Integration with ReactiveX](#integration-with-reactivex)
     * [Custom Event Sources](#custom-event-sources)
   * [Dependency](#dependency)
     * [Event Dependency](#event-dependency)
@@ -114,7 +115,28 @@ timer.addListener(new EventListener {
 
 <a name="operations-on-event-sources"/>
 ###Operations on Event Sources
-Events could get complex hence the Reactive API provides a set of functional operations that could be performed on event sources to handle more complex scenarios. Operations like `map`, `filter`, `delay`, `join` ... etc. [TBD] 
+Events could get complex hence the Reactive API provides a set of functional operations that could be performed on event sources to handle more complex scenarios. Operations like `map`, `filter` ... etc. The set of operations that are currently implemented are very limited however it is possible to carry out more complex transformations using the `Observable` API of ReactiveX as illustrated in the next subsection.
+
+<a name="integration-with-reactivex"/>
+####Integration with ReactiveX
+[ReactiveX](http://reactivex.io/intro.html) is a library for composing asynchronous and event-based programs by using observable sequences. It extends the observer pattern to support sequences of events and adds operators that allow you to compose sequences together in a declarative functional style. ReactiveX provides [a rich set of operators](http://reactivex.io/documentation/operators.html) with which you can filter, select, transform, combine, and compose Observables.
+
+It is possible to construct an event source from an `Observable` and to convert any event source to an `Observable` using the methods `StreamingContext.rxEventSource` and `EventSource.toObservable`. Using the rich set of operators of [RxScala](http://reactivex.io/rxscala/), it is possible to handle complex usecases.
+
+```scala
+val sc: StreamingContext = ...
+
+val timer = sc.timer(start, end, period, "timer")
+
+// Convert an event source to an observable
+val observable = timer.toObservable
+
+// Perform some transformations using the Observable API
+val delayedTimer = observable.delay(10 seconds)
+
+// Convert an observable to an event source
+val rxTimer = sc.rxEventSource(delayedTimer, "rxTimer")
+```
 
 <a name="custom-event-sources"/>
 ###Custom Event Sources
