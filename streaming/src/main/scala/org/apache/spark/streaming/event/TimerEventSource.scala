@@ -3,7 +3,7 @@ package org.apache.spark.streaming.event
 
 import org.apache.spark.streaming.{Duration, StreamingContext, Time}
 
-case class TimerEvent(source: EventSource, override val time: Time, override val index: Long)
+case class TimerEvent(source: EventSource, override val index: Long, override val time: Time)
   extends Event(source, index, time)
 
 class TimerEventSource(
@@ -45,7 +45,7 @@ class TimerEventSource(
     var index = ((nextTime - startTime) / period).toLong
     while (!stopped && nextTime <= endTime) {
       clock.waitTillTime(nextTime.milliseconds)
-      post(TimerEvent(this, nextTime, index))
+      post(TimerEvent(this, index, nextTime))
       logDebug(s"Timer ($name) event with time $nextTime and period index $index")
       index += 1
       nextTime += period
@@ -65,7 +65,7 @@ class TimerEventSource(
   override def between(from: Time, to: Time): Seq[Event] = {
     from.to(to, period)
       .filter(t => t >= startTime && t <= endTime)
-      .map(t => TimerEvent(this, t, ((t - startTime) / period).toInt))
+      .map(t => TimerEvent(this, ((t - startTime) / period).toInt, t))
   }
 
   override def toProduct: Product = (startTime, endTime, period, name)

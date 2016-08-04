@@ -34,7 +34,7 @@ import org.apache.spark.streaming.util.{WriteAheadLogRecordHandle, WriteAheadLog
 
 class ReceiverInputDStreamSuite extends TestSuiteBase with BeforeAndAfterAll {
 
-  val event = new TimerEvent(null, Time(0), 0)
+  val event = new TimerEvent(null, 0, Time(0))
 
   override def afterAll(): Unit = {
     try {

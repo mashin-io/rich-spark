@@ -580,7 +580,7 @@ class StreamingContext private[streaming] (
 
     // Verify whether the DStream checkpoint is serializable
     if (isCheckpointingEnabled) {
-      val dummyCheckpoint = new Checkpoint(this, TimerEvent(null, Time(0), 0))
+      val dummyCheckpoint = new Checkpoint(this, TimerEvent(null, 0, Time(0)))
       try {
         Checkpoint.serialize(dummyCheckpoint, conf)
       } catch {

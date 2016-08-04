@@ -57,7 +57,7 @@ class StreamingJobProgressListenerSuite extends TestSuiteBase with Matchers {
   val timer = new TimerEventSource(null, Time(0), Time(10000), Seconds(10), "null-timer")
 
   private def timerEvent(time: Time): TimerEvent = {
-    new TimerEvent(timer, time, time.milliseconds / batchDuration.milliseconds - 1)
+    new TimerEvent(timer, time.milliseconds / batchDuration.milliseconds - 1, time)
   }
 
   test("onBatchSubmitted, onBatchStarted, onBatchCompleted, " +

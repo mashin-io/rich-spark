@@ -7,10 +7,14 @@ import scala.reflect.ClassTag
 import rx.lang.scala.observables.ConnectableObservable
 import rx.lang.scala.{Observable, Subscription}
 
-import org.apache.spark.streaming.StreamingContext
+import org.apache.spark.streaming.{Time, StreamingContext}
 
-case class ObservableEvent[T](source: EventSource, data: T, override val index: Long)
-  extends Event(source, index)
+case class ObservableEvent[T](
+    source: EventSource,
+    data: T,
+    override val index: Long,
+    override val time: Time = Time(System.currentTimeMillis))
+  extends Event(source, index, time)
 
 final class ObservableEventSource[T: ClassTag](
     @transient ssc: StreamingContext,

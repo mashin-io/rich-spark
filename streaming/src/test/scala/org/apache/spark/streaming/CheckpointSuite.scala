@@ -337,7 +337,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     val originalConf = ssc.conf
 
     val cp = new Checkpoint(ssc,
-      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1))
+      new TimerEvent(null, 1000 / batchDuration.milliseconds - 1, Time(1000)))
     val cpConf = cp.createSparkConf()
     assert(cpConf.get("spark.master") === originalConf.get("spark.master"))
     assert(cpConf.get("spark.app.name") === originalConf.get("spark.app.name"))
@@ -386,7 +386,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     assert(originalConf.get("spark.driver.port") === "9999")
 
     val cp = new Checkpoint(ssc,
-      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1))
+      new TimerEvent(null, 1000 / batchDuration.milliseconds - 1, Time(1000)))
     ssc.stop()
 
     // Serialize/deserialize to simulate write to storage and reading it back
@@ -830,11 +830,11 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
       new CheckpointWriter(jobGenerator, conf, checkpointDir, new Configuration())
     val bytes1 = Array.fill[Byte](10)(1)
     new checkpointWriter.CheckpointWriteHandler(
-      new TimerEvent(null, Time(2000), 2000 / batchDuration.milliseconds - 1),
+      new TimerEvent(null, 2000 / batchDuration.milliseconds - 1, Time(2000)),
       bytes1, clearCheckpointDataLater = false).run()
     val bytes2 = Array.fill[Byte](10)(2)
     new checkpointWriter.CheckpointWriteHandler(
-      new TimerEvent(null, Time(1000), 1000 / batchDuration.milliseconds - 1),
+      new TimerEvent(null, 1000 / batchDuration.milliseconds - 1, Time(1000)),
       bytes2, clearCheckpointDataLater = true).run()
     val checkpointFiles = Checkpoint.getCheckpointFiles(checkpointDir).reverse.map { path =>
       new File(path.toUri)

@@ -64,7 +64,7 @@ class JavaStreamingListenerWrapperSuite extends SparkFunSuite {
     listenerWrapper.onReceiverError(receiverError)
     assertReceiverInfo(listener.receiverError.receiverInfo, receiverError.receiverInfo)
 
-    val event = new TimerEvent(null, Time(1000L), 0)
+    val event = new TimerEvent(null, 0, Time(1000L))
 
     val batchSubmitted = StreamingListenerBatchSubmitted(BatchInfo(
       batchEvent = event,
