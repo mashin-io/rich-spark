@@ -20,6 +20,7 @@ package org.apache.spark.streaming.scheduler
 import scala.collection.mutable.Queue
 
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.streaming.event.EventSource
 import org.apache.spark.util.Distribution
 
 /**
@@ -58,6 +59,14 @@ case class StreamingListenerReceiverError(receiverInfo: ReceiverInfo)
 case class StreamingListenerReceiverStopped(receiverInfo: ReceiverInfo)
   extends StreamingListenerEvent
 
+@DeveloperApi
+case class StreamingListenerEventSourceStarted(eventSource: EventSource)
+  extends StreamingListenerEvent
+
+@DeveloperApi
+case class StreamingListenerEventSourceStopped(eventSource: EventSource)
+  extends StreamingListenerEvent
+
 /**
  * :: DeveloperApi ::
  * A listener interface for receiving information about an ongoing streaming
@@ -74,6 +83,12 @@ trait StreamingListener {
 
   /** Called when a receiver has been stopped */
   def onReceiverStopped(receiverStopped: StreamingListenerReceiverStopped) { }
+
+  /** Called when an event source has been started */
+  def onEventSourceStarted(eventSourceStarted: StreamingListenerEventSourceStarted) { }
+
+  /** Called when an event source has been stopped */
+  def onEventSourceStopped(eventSourceStopped: StreamingListenerEventSourceStopped) { }
 
   /** Called when a batch of jobs has been submitted for processing. */
   def onBatchSubmitted(batchSubmitted: StreamingListenerBatchSubmitted) { }
@@ -97,6 +112,7 @@ trait StreamingListener {
 /**
  * :: DeveloperApi ::
  * A simple StreamingListener that logs summary statistics across Spark Streaming batches
+ *
  * @param numBatchInfos Number of last batches to consider for generating statistics (default: 10)
  */
 @DeveloperApi

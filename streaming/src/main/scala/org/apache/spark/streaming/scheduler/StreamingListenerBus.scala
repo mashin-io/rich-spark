@@ -55,6 +55,10 @@ private[streaming] class StreamingListenerBus(sparkListenerBus: LiveListenerBus)
         listener.onReceiverError(receiverError)
       case receiverStopped: StreamingListenerReceiverStopped =>
         listener.onReceiverStopped(receiverStopped)
+      case eventSourceStarted: StreamingListenerEventSourceStarted =>
+        listener.onEventSourceStarted(eventSourceStarted)
+      case eventSourceStopped: StreamingListenerEventSourceStopped =>
+        listener.onEventSourceStopped(eventSourceStopped)
       case batchSubmitted: StreamingListenerBatchSubmitted =>
         listener.onBatchSubmitted(batchSubmitted)
       case batchStarted: StreamingListenerBatchStarted =>

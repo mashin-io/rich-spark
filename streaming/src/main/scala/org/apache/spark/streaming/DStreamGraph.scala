@@ -20,16 +20,16 @@ package org.apache.spark.streaming
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 import java.util.concurrent.ConcurrentHashMap
 
-import org.apache.spark.internal.Logging
-import org.apache.spark.streaming.dstream.{DStream, InputDStream, ReceiverInputDStream}
-import org.apache.spark.streaming.event.{EventListener, Event, EventSource, TimerEventSource}
-import org.apache.spark.streaming.scheduler.Job
-import org.apache.spark.util.Utils
-
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
+
+import org.apache.spark.internal.Logging
+import org.apache.spark.streaming.dstream.{DStream, InputDStream, ReceiverInputDStream}
+import org.apache.spark.streaming.event._
+import org.apache.spark.streaming.scheduler.{Job, StreamingListenerEventSourceStarted}
+import org.apache.spark.util.Utils
 
 final private[streaming] class DStreamGraph extends Serializable with Logging {
 
@@ -76,20 +76,29 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
       outputStreams.foreach(_.remember(rememberDuration))
       outputStreams.foreach(_.validateAtStart)
       inputStreams.par.foreach(_.start())
-      eventSources.par.foreach(_.start())
+      eventSources.par.foreach { eventSource =>
+        eventSource.start()
+        ssc.scheduler.listenerBus.post(StreamingListenerEventSourceStarted(eventSource))
+      }
     }
   }
 
-  def restart(time: Time) {
+  def restart(time: Time, ssc: StreamingContext) {
     this.synchronized {
       startTime = time
-      eventSources.par.foreach(_.restart())
+      eventSources.par.foreach { eventSource =>
+        eventSource.restart()
+        ssc.scheduler.listenerBus.post(StreamingListenerEventSourceStarted(eventSource))
+      }
     }
   }
 
-  def stop() {
+  def stop(ssc: StreamingContext) {
     this.synchronized {
-      eventSources.par.foreach(_.stop())
+      eventSources.par.foreach { eventSource =>
+        eventSource.stop()
+        ssc.scheduler.listenerBus.post(StreamingListenerEventSourceStarted(eventSource))
+      }
       inputStreams.par.foreach(_.stop())
     }
   }

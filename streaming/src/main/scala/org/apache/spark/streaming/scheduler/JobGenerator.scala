@@ -135,7 +135,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       logInfo("Waited for all received blocks to be consumed for job generation")
 
       // Stop graph
-      graph.stop()
+      graph.stop(ssc)
       //val stopTime = clock.getTimeMillis()
       logInfo("Stopped graph")
 
@@ -152,7 +152,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     } else {
       logInfo("Stopping JobGenerator immediately")
       // Stop graph immediately, ignore unprocessed data and pending jobs
-      graph.stop()
+      graph.stop(ssc)
     }
 
     // First stop the event loop, then stop the checkpoint writer; see SPARK-14701
@@ -251,7 +251,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
 
     // Restart the graph
-    graph.restart(restartTime)
+    graph.restart(restartTime, ssc)
     logInfo("Restarted JobGenerator at " + restartTime)
   }
 
