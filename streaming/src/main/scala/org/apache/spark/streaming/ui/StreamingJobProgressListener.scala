@@ -20,13 +20,14 @@ package org.apache.spark.streaming.ui
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.{LinkedHashMap, Map => JMap, Properties}
 
+import scala.collection.JavaConverters._
+import scala.collection.mutable
+import scala.collection.mutable.{HashMap, Queue}
+
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.StreamingContext
-import org.apache.spark.streaming.event.Event
+import org.apache.spark.streaming.event.{Event, EventSource}
 import org.apache.spark.streaming.scheduler._
-
-import scala.collection.JavaConverters._
-import scala.collection.mutable.{HashMap, Queue}
 
 private[streaming] class StreamingJobProgressListener(ssc: StreamingContext)
   extends SparkListener with StreamingListener {
@@ -39,6 +40,7 @@ private[streaming] class StreamingJobProgressListener(ssc: StreamingContext)
   private var totalReceivedRecords = 0L
   private var totalProcessedRecords = 0L
   private val receiverInfos = new HashMap[Int, ReceiverInfo]
+  private val eventSourceInfos = new mutable.HashMap[EventSource, EventSourceUIData]
 
   // Because onJobStart and onBatchXXX messages are processed in different threads,
   // we may not be able to get the corresponding BatchUIData when receiving onJobStart. So here we
@@ -85,10 +87,34 @@ private[streaming] class StreamingJobProgressListener(ssc: StreamingContext)
     }
   }
 
+  override def onEventSourceStarted(eventSourceStarted: StreamingListenerEventSourceStarted) {
+    synchronized {
+      val eventSource = eventSourceStarted.eventSource
+      eventSourceInfos(eventSource) = eventSourceInfos.getOrElse(eventSource,
+        EventSourceUIData.from(eventSource)).setStarted()
+    }
+  }
+
+  override def onEventSourceStopped(eventSourceStopped: StreamingListenerEventSourceStopped) {
+    synchronized {
+      val eventSource = eventSourceStopped.eventSource
+      eventSourceInfos(eventSource) = eventSourceInfos.getOrElse(eventSource,
+        EventSourceUIData.from(eventSource)).setStopped()
+    }
+  }
+
   override def onBatchSubmitted(batchSubmitted: StreamingListenerBatchSubmitted): Unit = {
     synchronized {
-      waitingBatchUIData(batchSubmitted.batchInfo.batchEvent.instanceId) =
+      val batchEvent = batchSubmitted.batchInfo.batchEvent
+      waitingBatchUIData(batchEvent.instanceId) =
         BatchUIData(batchSubmitted.batchInfo)
+
+      val eventSource = batchEvent.eventSource
+      eventSourceInfos.get(eventSource).foreach { eventSourceUIData =>
+        eventSourceUIData.incrementBatches()
+        eventSourceUIData.setFirstBatchEvent(batchEvent)
+        eventSourceUIData.setLastBatchEvent(batchEvent)
+      }
     }
   }
 
@@ -165,6 +191,10 @@ private[streaming] class StreamingJobProgressListener(ssc: StreamingContext)
     ssc.graph.getReceiverInputStreams().length - numActiveReceivers
   }
 
+  def numEventSources: Int = synchronized {
+    eventSourceInfos.size
+  }
+
   def numTotalCompletedBatches: Long = synchronized {
     totalCompletedBatches
   }
@@ -235,6 +265,10 @@ private[streaming] class StreamingJobProgressListener(ssc: StreamingContext)
 
   def receiverInfo(receiverId: Int): Option[ReceiverInfo] = synchronized {
     receiverInfos.get(receiverId)
+  }
+
+  def allEventSourceInfo(): Seq[EventSourceUIData] = synchronized {
+    eventSourceInfos.values.toSeq
   }
 
   def lastCompletedBatch: Option[BatchUIData] = synchronized {

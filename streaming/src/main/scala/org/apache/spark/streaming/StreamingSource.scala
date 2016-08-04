@@ -46,6 +46,9 @@ private[streaming] class StreamingSource(ssc: StreamingContext) extends Source {
   // Gauge for number of network receivers
   registerGauge("receivers", _.numReceivers, 0)
 
+  // Gauge for number of event sources
+  registerGauge("eventSources", _.numEventSources, 0)
+
   // Gauge for number of total completed batches
   registerGauge("totalCompletedBatches", _.numTotalCompletedBatches, 0L)
 
