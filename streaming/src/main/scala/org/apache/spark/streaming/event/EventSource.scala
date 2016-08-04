@@ -3,16 +3,17 @@ package org.apache.spark.streaming.event
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.function.{Consumer, Predicate}
 
-import rx.lang.scala.Observable
-
-import org.apache.spark.SparkException
-import org.apache.spark.internal.Logging
-import org.apache.spark.streaming.{Time, StreamingContext}
-import org.apache.spark.util.Utils
-
 import scala.reflect.ClassTag
 import scala.runtime.ScalaRunTime
 import scala.util.control.NonFatal
+
+import rx.lang.scala.Observable
+
+import org.apache.spark.SparkException
+import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.internal.Logging
+import org.apache.spark.streaming.{StreamingContext, Time}
+import org.apache.spark.util.Utils
 
 trait EventListener extends Serializable {
   def onEvent(event: Event)
@@ -88,7 +89,9 @@ abstract class EventSource(
     }
   }
 
-  override def toString(): String = name
+  override def toString: String = s"${getClass.getSimpleName}($name)"
+
+  def toDetailedString: String = toString
 
   final def map(f: Event => Event): EventSource = {
     new MappedEventSource(this, f)

@@ -70,7 +70,7 @@ class TimerEventSource(
 
   override def toProduct: Product = (startTime, endTime, period, name)
 
-  override def toString(): String = {
+  override def toDetailedString: String = {
     s"Timer($name,s:$startTime,e:$endTime,p:$period)"
   }
 
