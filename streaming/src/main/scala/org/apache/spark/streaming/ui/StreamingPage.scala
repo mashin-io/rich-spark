@@ -153,6 +153,7 @@ private[ui] class StreamingPage(parent: StreamingTab)
       basicInfo ++
       listener.synchronized {
         generateStatTable() ++
+          generateEventSourcesTable() ++
           generateBatchListTables()
       }
     SparkUIUtils.headerSparkPage("Streaming Statistics", content, parent, Some(5000))
@@ -480,6 +481,70 @@ private[ui] class StreamingPage(parent: StreamingTab)
       </td>
       <td class="histogram">{graphUIDataForRecordRate.generateHistogramHtml(jsCollector)}</td>
     </tr>
+  }
+
+  private def generateEventSourcesTable(): Seq[Node] = {
+    val title = <h4>Event Sources</h4>
+
+    val content: Seq[Node] = listener.allEventSourceInfo().sortBy(_.name).flatMap {
+      eventSource =>
+        val firstBatchEvent = eventSource.firstBatchEvent
+        val firstBatchEventDetailed = firstBatchEvent.map(_.toString).getOrElse("")
+        val formattedFirstBatchEvent = firstBatchEvent.map(event =>
+          s"${event.getClass.getSimpleName}(" +
+          s"${UIUtils.formatBatchTime(event.time.milliseconds, 1)})")
+          .getOrElse("-")
+        val lastBatchEvent = eventSource.lastBatchEvent
+        val lastBatchEventDetailed = lastBatchEvent.map(_.toString).getOrElse("")
+        val formattedLastBatchEvent = lastBatchEvent.map(event =>
+          s"${lastBatchEvent.getClass.getSimpleName}(" +
+          s"${UIUtils.formatBatchTime(event.time.milliseconds, 1)})")
+          .getOrElse("-")
+
+        <tr>
+          <td sorttable_customkey={eventSource.name}>{eventSource.name}</td>
+          <td sorttable_customkey={eventSource.eventSourceType}>{eventSource.eventSourceType}</td>
+          <td sorttable_customkey={eventSource.details}>{eventSource.details}</td>
+          <td sorttable_customkey={eventSource.status}>{eventSource.status}</td>
+          <td sorttable_customkey={eventSource.numOfBatches.toString}>{eventSource.numOfBatches}</td>
+          <td sorttable_customkey={formattedFirstBatchEvent}>
+            <span data-toggle="tooltip" data-placement="top"
+                  title={firstBatchEventDetailed}>
+              {formattedFirstBatchEvent}
+            </span>
+          </td>
+          <td sorttable_customkey={formattedLastBatchEvent}>
+            <span data-toggle="tooltip" data-placement="top"
+                  title={lastBatchEventDetailed}>
+              {formattedLastBatchEvent}
+            </span>
+          </td>
+        </tr>
+    }
+
+    val table =
+      // scalastyle:off
+      <table id="event-sources-table"
+             class="table table-bordered table-striped table-condensed sortable"
+             style="width: auto">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Details</th>
+            <th>Status</th>
+            <th>Number of Batches</th>
+            <th>First Batch Event</th>
+            <th>Last Batch Event</th>
+          </tr>
+        </thead>
+        <tbody>
+          {content}
+        </tbody>
+      </table>
+      // scalastyle:on
+
+    title ++ table
   }
 
   private def generateBatchListTables(): Seq[Node] = {

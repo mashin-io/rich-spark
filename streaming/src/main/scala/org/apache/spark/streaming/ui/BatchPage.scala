@@ -144,7 +144,7 @@ private[ui] class BatchPage(parent: StreamingTab) extends WebUIPage("batch") {
             completed = sparkJob.numCompletedTasks,
             failed = sparkJob.numFailedTasks,
             skipped = sparkJob.numSkippedTasks,
-            killed = sparkJob.numKilledTasks,
+            //killed = sparkJob.numKilledTasks,
             total = sparkJob.numTasks - sparkJob.numSkippedTasks)
         }
       </td>
@@ -325,6 +325,18 @@ private[ui] class BatchPage(parent: StreamingTab) extends WebUIPage("batch") {
       <div>
         <ul class="unstyled">
           <li>
+            <strong>Event Source: </strong>
+            {batchUIData.batchEvent.eventSource.toDetailedString}
+          </li>
+          <li>
+            <strong>Event: </strong>
+            {batchUIData.batchEvent.toString}
+          </li>
+          <li>
+            <strong>Timestamp: </strong>
+            {UIUtils.formatBatchTime(batchUIData.batchEvent.time.milliseconds, 1)}
+          </li>
+          <li>
             <strong>Batch Duration: </strong>
             {SparkUIUtils.formatDuration(streamingListener.batchDuration)}
           </li>
@@ -356,7 +368,7 @@ private[ui] class BatchPage(parent: StreamingTab) extends WebUIPage("batch") {
 
     val content = summary ++ generateJobTable(batchUIData)
 
-    SparkUIUtils.headerSparkPage(s"Details of batch at $batchEventInstanceId", content, parent)
+    SparkUIUtils.headerSparkPage(s"Details of batch $batchEventInstanceId", content, parent)
   }
 
   def generateInputMetadataTable(inputMetadatas: Seq[(Int, String)]): Seq[Node] = {

@@ -24,7 +24,9 @@ import org.apache.spark.ui.{UIUtils => SparkUIUtils}
 private[ui] abstract class BatchTableBase(tableId: String, batchInterval: Long) {
 
   protected def columns: Seq[Node] = {
-    <th>Batch Time</th>
+    <th>Event Source</th>
+      <th>Batch Event</th>
+      <th>Timestamp</th>
       <th>Input Size</th>
       <th>Scheduling Delay
         {SparkUIUtils.tooltip("Time taken by Streaming scheduler to submit jobs of a batch", "top")}
@@ -50,9 +52,10 @@ private[ui] abstract class BatchTableBase(tableId: String, batchInterval: Long) 
   }
 
   protected def baseRow(batch: BatchUIData): Seq[Node] = {
+    val eventSource = batch.batchEvent.eventSource
     val batchEvent = batch.batchEvent
-    //val formattedBatchEvent = UIUtils.formatBatchTime(batchEvent, batchInterval)
-    val formattedBatchEvent = batchEvent.toString
+    val formattedBatchEvent = s"${batchEvent.getClass.getSimpleName}(${batchEvent.index})"
+    val formattedTimestamp = UIUtils.formatBatchTime(batchEvent.time.milliseconds, 1)
     val numRecords = batch.numRecords
     val schedulingDelay = batch.schedulingDelay
     val formattedSchedulingDelay = schedulingDelay.map(SparkUIUtils.formatDuration).getOrElse("-")
@@ -60,12 +63,21 @@ private[ui] abstract class BatchTableBase(tableId: String, batchInterval: Long) 
     val formattedProcessingTime = processingTime.map(SparkUIUtils.formatDuration).getOrElse("-")
     val batchEventId = s"batch-${batchEvent.instanceId}"
 
-    <td id={batchEventId} sorttable_customkey={batchEvent.toString}
-        isFailed={batch.isFailed.toString}>
-      <a href={s"batch?id=${batchEvent.instanceId}"}>
-        {formattedBatchEvent}
-      </a>
+    <td sorttable_customkey={eventSource.toDetailedString}>
+      <span data-toggle="tooltip" data-placement="top"
+         title={eventSource.toDetailedString}>
+        {eventSource.toString}
+      </span>
     </td>
+      <td id={batchEventId} sorttable_customkey={batchEvent.toString}
+          isFailed={batch.isFailed.toString}>
+        <a href={s"batch?id=${batchEvent.instanceId}"}
+           data-toggle="tooltip" data-placement="top"
+           title={batchEvent.toString}>
+          {formattedBatchEvent}
+        </a>
+      </td>
+      <td sorttable_customkey={formattedTimestamp}>{formattedTimestamp}</td>
       <td sorttable_customkey={numRecords.toString}>{numRecords.toString} records</td>
       <td sorttable_customkey={schedulingDelay.getOrElse(Long.MaxValue).toString}>
         {formattedSchedulingDelay}
@@ -98,7 +110,7 @@ private[ui] abstract class BatchTableBase(tableId: String, batchInterval: Long) 
         completed = batch.numCompletedOutputOp,
         failed = batch.numFailedOutputOp,
         skipped = 0,
-        killed = 0,
+        //killed = 0,
         total = batch.outputOperations.size)
       }
     </td>
