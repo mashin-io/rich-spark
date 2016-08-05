@@ -72,7 +72,7 @@ class ReceivedBlockTrackerSuite
 
     val timer = new TimerEventSource(null, Time(0), Time(1), Seconds(1), "null-timer")
 
-    val event1 = new TimerEvent(timer, Time(0), 0)
+    val event1 = new TimerEvent(timer, 0, Time(0))
 
     // Allocate the blocks to a batch and verify that all of them have been allocated
     receivedBlockTracker.allocateBlocksToBatchAndStream(event1, streamId)
@@ -81,7 +81,7 @@ class ReceivedBlockTrackerSuite
     receivedBlockTracker.getUnallocatedBlocks(streamId) shouldBe empty
     receivedBlockTracker.hasUnallocatedReceivedBlocks should be (false)
 
-    val event2 = new TimerEvent(timer, Time(1), 1)
+    val event2 = new TimerEvent(timer, 1, Time(1))
 
     // Allocate no blocks to another batch
     receivedBlockTracker.allocateBlocksToBatchAndStream(event2, streamId)
@@ -159,7 +159,7 @@ class ReceivedBlockTrackerSuite
 
     // Allocate blocks to batch and verify whether the unallocated blocks got allocated
     val batchTime1 = manualClock.getTimeMillis()
-    val event1 = new TimerEvent(timer, batchTime1, 0)
+    val event1 = new TimerEvent(timer, 0, batchTime1)
     tracker2.allocateBlocksToBatchAndStream(event1, streamId)
     tracker2.getBlocksOfBatchAndStream(event1, streamId) shouldEqual blockInfos1
     tracker2.getBlocksOfBatch(event1) shouldEqual Map(streamId -> blockInfos1)
@@ -167,7 +167,7 @@ class ReceivedBlockTrackerSuite
     // Add more blocks and allocate to another batch
     incrementTime()
     val batchTime2 = manualClock.getTimeMillis()
-    val event2 = new TimerEvent(timer, batchTime2, 1)
+    val event2 = new TimerEvent(timer, 1, batchTime2)
     val blockInfos2 = addBlockInfos(tracker2)
     tracker2.allocateBlocksToBatchAndStream(event2, streamId)
     tracker2.getBlocksOfBatchAndStream(event2, streamId) shouldEqual blockInfos2
@@ -230,7 +230,7 @@ class ReceivedBlockTrackerSuite
     // list of timestamps for files
     val timer = new TimerEventSource(null, Time(0), Time(10000), Seconds(1), "null-timer")
     val t = Seq.tabulate(5)(i => i * 1000)
-    val e = t.zipWithIndex.map { case (t, i) => new TimerEvent(timer, Time(t), i) }
+    val e = t.zipWithIndex.map { case (t, i) => new TimerEvent(timer, i, Time(t)) }
 
     writeEventsManually(getLogFileName(t(0)), Seq(createBatchCleanup(e(0))))
     assert(getWriteAheadLogFiles().length === 1)
