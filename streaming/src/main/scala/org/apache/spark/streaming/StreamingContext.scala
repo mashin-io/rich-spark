@@ -45,7 +45,7 @@ import org.apache.spark.serializer.SerializationDebugger
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.StreamingContextState._
 import org.apache.spark.streaming.dstream._
-import org.apache.spark.streaming.event.{ObservableEventSource, Event, TimerEvent, TimerEventSource}
+import org.apache.spark.streaming.event._
 import org.apache.spark.streaming.receiver.Receiver
 import org.apache.spark.streaming.scheduler.{ExecutorAllocationManager, JobScheduler, StreamingListener}
 import org.apache.spark.streaming.ui.{StreamingJobProgressListener, StreamingTab}
@@ -309,6 +309,10 @@ class StreamingContext private[streaming] (
       name: String)
     : ObservableEventSource[T] = {
     new ObservableEventSource[T](this, observableGenerator, name)
+  }
+
+  def hdfsWatcher(hdfsURI: String, path: String, name: String): HDFSEventSource = {
+    new HDFSEventSource(this, hdfsURI, path, name)
   }
 
   /**
