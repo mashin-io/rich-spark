@@ -497,7 +497,7 @@ private[ui] class StreamingPage(parent: StreamingTab)
         val lastBatchEvent = eventSource.lastBatchEvent
         val lastBatchEventDetailed = lastBatchEvent.map(_.toString).getOrElse("")
         val formattedLastBatchEvent = lastBatchEvent.map(event =>
-          s"${lastBatchEvent.getClass.getSimpleName}(" +
+          s"${event.getClass.getSimpleName}(" +
           s"${UIUtils.formatBatchTime(event.time.milliseconds, 1)})")
           .getOrElse("-")
 

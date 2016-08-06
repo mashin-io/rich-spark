@@ -31,4 +31,8 @@ private[streaming] class MappedEventSource(
   }
 
   override def toProduct: Product = (name, prev.toProduct)
+
+  override def toDetailedString: String = {
+    s"${getClass.getSimpleName}(${prev.toDetailedString})"
+  }
 }
