@@ -3,18 +3,18 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <parent>
-    <artifactId>rich-spark</artifactId>
-    <groupId>io.mashin</groupId>
+    <groupId>io.mashin.rich-spark</groupId>
+    <artifactId>rich-spark-parent_2.11</artifactId>
     <version>0.0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>spark-streaming_2.11</artifactId>
+  <artifactId>rich-spark-streaming_2.11</artifactId>
   <properties>
     <sbt.project.name>streaming</sbt.project.name>
   </properties>
   <packaging>jar</packaging>
-  <name>Reactive Spark Project Streaming</name>
+  <name>Reactive Spark Streaming Project</name>
 
   <dependencies>
 
