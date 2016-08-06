@@ -24,9 +24,23 @@ Table of contents
 <a name="overview"/>
 #Overview
 
-The streaming API of Apache Spark assumes an equi-frequent micro-batches model such that streaming data are allocated and jobs are submitted into a batch every fixed amount of time (aka `batchDuration`). Reactive Spark API is an extension of this model; instead of generating a batch every `batchDuration`, batch generation becomes event based; Spark listens to event sources and generates batches upon events. The equi-frequent micro-batches becomes equivalent to a timer event source that fires a timer event every `batchDuration`.
+The streaming API of Apache Spark assumes an equi-frequent micro-batches model such that streaming data are divided into batches for which jobs are submitted to the Spark engine every fixed amount of time (aka `batchDuration`).
 
-This allows a fine grain scheduling of Spark jobs. The same code could run as either streaming or batching. With this model, a batch job could easily be configured to run periodically. There would be no need to deploy or configure an external scheduler (like Apache Oozie or linux crons). This model easily allows jobs with dependencies that span across time, like daily logs transformations concluded by weekly aggregations.
+![Spark Streaming Old Model](img/reactive-stream-old-model.png)
+
+All input streams are dealt with in the same way. The same recurrent timer allocates batches for all streams on every batch duration.
+
+![Spark Streaming Old Model](img/reactive-stream-old-model-2.png)
+
+Reactive Spark API is an extension of this model; instead of generating a batch every `batchDuration`, batch generation becomes event based. Spark listens to event sources and generates batches upon events. The equi-frequent micro-batches model becomes equivalent to a timer event source that fires a timer event every `batchDuration`.
+
+![Spark Streaming New Model](img/reactive-stream-new-model-2.png)
+
+This allows a fine grain scheduling of Spark jobs. Different input streams with different data rates, each could have its own event source. Either high frequency input data streams or low frequency input batch data, both kinds could be dealt with by the same API such that the same code could serve streaming and batch data.
+
+![Spark Streaming New Model](img/reactive-stream-new-model.png)
+
+With this model, a batch job could easily be scheduled to run periodically. There would be no need to deploy or configure an external scheduler (like Apache Oozie, Linux Crons, Mesos Chronos ... etc.). This model easily allows jobs with dependencies that span across time, like daily logs transformations concluded by weekly aggregations. This extension also adds a variety of event sources allowing to schedule jobs not only on timely basis.
 
 <a name="quick-example"/>
 #Quick Example
