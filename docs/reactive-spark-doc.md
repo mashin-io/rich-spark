@@ -20,6 +20,7 @@ Table of contents
     * [Default Timer](#default-timer)
   * [DStream Output Operations](#dstream-output-operations)
   * [DStream Checkpoint Interval](#dstream-checkpoint-interval)
+* [Using the Package](#using-the-package)
 
 <a name="overview"/>
 #Overview
@@ -325,3 +326,25 @@ A stream could be set to checkpoint data every now and then. The checkpoint inte
 - *count:* `dstream.checkpoint(checkpointCount)` sets the stream to checkpoint after at least a number of events equal to `checkpointCount` has occurred since the last checkpoint
 
 In case both `checkpointCount` and `checkpointDuration` are set, both events duration and count are considered and a checkpoint happens whenever any criterion is satisfied.
+
+<a name="using-the-package"/>
+#Using the Package
+
+In order to setup Maven and your project POM file to use the package, add the following repository to the list of repositories:
+
+```xml
+<repository>
+  <id>mashin</id>
+  <url>https://github.com/mashin-io/mvn/raw/master/</url>
+</repository>
+```
+
+Also, use the following dependency:
+
+```xml
+<dependency>
+  <groupId>io.mashin.rich-spark</groupId>
+  <artifactId>rich-spark-streaming_2.11</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
