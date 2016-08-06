@@ -18,6 +18,7 @@
 package org.apache.spark.streaming
 
 import java.io.{InputStream, NotSerializableException}
+import java.time.ZonedDateTime
 import java.util.Properties
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
@@ -302,6 +303,16 @@ class StreamingContext private[streaming] (
       name: String)
     : TimerEventSource = {
     new TimerEventSource(this, startTime, endTime, period, name)
+  }
+
+  def timer(
+      startTime: ZonedDateTime,
+      endTime: ZonedDateTime,
+      period: Duration,
+      name: String)
+    : TimerEventSource = {
+    timer(Time(startTime.toInstant.toEpochMilli),
+      Time(endTime.toInstant.toEpochMilli), period, name)
   }
 
   def rxEventSource[T: ClassTag](
