@@ -374,7 +374,7 @@ object ParallelSGD extends Logging {
     }
 
     //(the updated weights, the regularized average loss of the last iteration)
-    (localWeights.toBreeze, lossSum / miniBatchSize + localRegVal)
+    (localWeights.asBreeze, lossSum / miniBatchSize + localRegVal)
   }
 
   /**
@@ -399,8 +399,8 @@ object ParallelSGD extends Logging {
       currentWeights: Vector,
       convergenceTol: Double): Boolean = {
     // To compare with convergence tolerance.
-    val previousBDV = previousWeights.toBreeze.toDenseVector
-    val currentBDV = currentWeights.toBreeze.toDenseVector
+    val previousBDV = previousWeights.asBreeze.toDenseVector
+    val currentBDV = currentWeights.asBreeze.toDenseVector
 
     // This represents the difference of updated weights in the iteration.
     val solutionVecDiff: Double = norm(previousBDV - currentBDV)

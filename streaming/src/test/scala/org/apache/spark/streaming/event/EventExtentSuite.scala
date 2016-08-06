@@ -21,7 +21,7 @@ class EventExtentSuite extends TestSuiteBase {
 
     assert(r1.leaves.forall(l1 => r2.leaves.forall(l2 => l1.hashCode() != l2.hashCode())))
 
-    val events = (1 to 10).map(i => TimerEvent(timer, Time(i * 1000), i)).toSet
+    val events = (1 to 10).map(i => TimerEvent(timer, i, Time(i * 1000))).toSet
     assert(r1.evalCount(events) == r2.evalCount(events))
     assert(r1.evalDuration(events) == r2.evalDuration(events))
 
@@ -52,7 +52,7 @@ class EventExtentSuite extends TestSuiteBase {
 
   test("eval - relative") {
     def eval(r: MaxEventExtent) {
-      val events = (1 to 10).map(i => TimerEvent(timer, Time(i * 1000), i)).toSet
+      val events = (1 to 10).map(i => TimerEvent(timer, i, Time(i * 1000))).toSet
       val r2 = new MaxEventExtent
       r2.set(Seconds(7))
       assert(r.evalCount(events) === r2.evalCount(events))
@@ -79,11 +79,11 @@ class EventExtentSuite extends TestSuiteBase {
 
   test("eval") {
     val events: SortedSet[Event] = Set(
-      TimerEvent(timer, Time(2000), 0),
-      TimerEvent(timer, Time(3000), 1),
-      TimerEvent(timer, Time(4500), 2),
-      TimerEvent(timer, Time(6000), 3),
-      TimerEvent(timer, Time(8500), 4))
+      TimerEvent(timer, 0, Time(2000)),
+      TimerEvent(timer, 1, Time(3000)),
+      TimerEvent(timer, 2, Time(4500)),
+      TimerEvent(timer, 3, Time(6000)),
+      TimerEvent(timer, 4, Time(8500)))
 
     def testCase(
         expectedCount: Int,
