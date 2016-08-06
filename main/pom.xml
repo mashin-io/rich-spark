@@ -44,6 +44,14 @@
       <artifactId>httpclient</artifactId>
     </dependency>
 
+    <!-- for mockserver 3.10.1 -->
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>18.0</version>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
 
 </project>
