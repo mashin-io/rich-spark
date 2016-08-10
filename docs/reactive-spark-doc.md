@@ -123,8 +123,6 @@ Events are fired by event sources either on regular or irregular basis. Events a
  2. **File system watcher:** a file system watcher monitors the file system and fires events on file system changes (like the creation of a new file or renaming an existing file ...)
  3. **RESTful web server:** helps triggering a job from an online admin console
 
-The following table summarizes the currently implemented event sources.
-
 Event sources provide listener interfaces so that other parties could get notified for events.
 
 ```scala
@@ -248,10 +246,10 @@ A stream directly asks the parent stream for the RDD corresponding to the given 
 <a name="tail-dependency"/>
 ###Tail Dependency
 
-A stream depends on a window of RDDs from the parent stream. The boundaries of the window are computed by counting events occurred just at and before the given event. There are three parameters that determine the window boundaries:
+A stream depends on a window of RDDs from the parent stream. The boundaries of the window are computed by counting events occurred before and at the same as the given event. There are three parameters that determine the window boundaries:
 
- - *skip length:* determines how many RDDs to skip corresponding to events just at and before the given event
- - *window length:* determines how many RDDs to include in the window corresponding to events just before the skipped events
+ - *skip length:* determines how many RDDs to skip corresponding to events occurred before or at the same time as the given event
+ - *window length:* determines how many RDDs to include in the window corresponding to events occurred just before the skipped events
  - *slide length:* determines the number of events after which the window is computed
 
 ![Tail Dependency](img/reactive-stream-tail-dependency.png)
