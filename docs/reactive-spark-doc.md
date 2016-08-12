@@ -8,6 +8,7 @@ Table of contents
     * [Timer Event Source](#timer-event-source)
     * [HDFS Event Source](#hdfs-event-source)
     * [ReactiveX Event Source](#reactivex-event-source)
+    * [REST Server Event Source](#rest-server-event-source)
     * [Custom Event Sources](#custom-event-sources)
     * [Operations on Event Sources](#operations-on-event-sources)
   * [Dependency](#dependency)
@@ -205,6 +206,44 @@ val delayedTimer = observable.delay(10 seconds)
 
 // Convert an observable to an event source
 val rxTimer = sc.rxEventSource(delayedTimer, "rxTimer")
+```
+
+<a name="rest-server-event-source"/>
+###REST Server Event Source
+
+The REST server event source is used for triggering jobs based on HTTP API calls. A valid usecase is to trigger jobs from a web admin console or from command line (e.g. using `curl`). The server implementation is based on [Spark - a micro web framework](http://sparkjava.com/).
+
+```scala
+val ssc: StreamingContext = ...
+
+// Define a REST server that binds to address localhost:4140
+val restServer = ssc.restServer(host = "localhost", port = "4140", name = "restServer")
+  .get(path = "/job1") // can receive GET request on http://localhost:4140/job1
+  .get(path = "/job2") // can receive GET request on http://localhost:4140/job2
+  
+val job1Trigger = restServer.filter {
+    case restEvent: RESTEvent => restEvent.request.pathInfo.equals("/job1")
+  }
+  
+val job2Trigger = restServer.filter {
+    case restEvent: RESTEvent => restEvent.request.pathInfo.equals("/job2")
+  }
+
+val stream1 = ...
+stream1.bind(job1Trigger)
+
+val stream2 = ...
+stream2.bind(job2Trigger)
+```
+
+```bash
+# From command line
+
+# Trigger job1
+curl http://localhost:4140/job1
+
+# Trigger job2
+curl http://localhost:4140/job2
 ```
 
 <a name="custom-event-sources"/>
