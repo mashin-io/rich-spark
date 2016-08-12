@@ -72,9 +72,8 @@
     </dependency>
 
     <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-minicluster</artifactId>
-      <scope>test</scope>
+      <groupId>com.sparkjava</groupId>
+      <artifactId>spark-core</artifactId>
     </dependency>
 
     <dependency>
@@ -116,6 +115,12 @@
     <dependency>
       <groupId>org.scala-lang</groupId>
       <artifactId>scala-library</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-minicluster</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.scalacheck</groupId>
