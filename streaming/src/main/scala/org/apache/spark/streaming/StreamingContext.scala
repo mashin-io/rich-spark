@@ -326,6 +326,18 @@ class StreamingContext private[streaming] (
     new HDFSEventSource(this, hdfsURI, path, name)
   }
 
+  def restServer(
+      address: String,
+      port: Int,
+      name: String,
+      maxThreads: Int = -1,
+      minThreads: Int = -1,
+      threadIdleTimeoutMillis: Int = -1)
+    : RESTEventSource = {
+    new RESTEventSource(this, address, port, name,
+      maxThreads, minThreads, threadIdleTimeoutMillis)
+  }
+
   /**
    * Create an input stream with any arbitrary user implemented receiver.
    * Find more details at http://spark.apache.org/docs/latest/streaming-custom-receivers.html
