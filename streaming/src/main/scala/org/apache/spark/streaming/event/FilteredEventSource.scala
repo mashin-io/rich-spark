@@ -36,11 +36,32 @@ private[streaming] class FilteredEventSource(
 
   override def dependencies: List[EventSource] = List(prev)
 
-  override def start(): Unit = prev.start()
+  override def start(): Unit = {
+    try {
+      prev.start()
+    } catch {
+      case e: Exception =>
+        logWarning(s"Exception while starting dependent event source $prev", e)
+    }
+  }
 
-  override def stop(): Unit = prev.stop()
+  override def stop(): Unit = {
+    try {
+      prev.stop()
+    } catch {
+      case e: Exception =>
+        logWarning(s"Exception while stopping dependent event source $prev", e)
+    }
+  }
 
-  override def restart(): Unit = prev.restart()
+  override def restart(): Unit = {
+    try {
+      prev.restart()
+    } catch {
+      case e: Exception =>
+        logWarning(s"Exception while restarting dependent event source $prev", e)
+    }
+  }
 
   override def between(from: Time, to: Time): Seq[Event] = {
     prev.between(from, to).filter(filterFunc).map(e => FilteredEvent(this, e))
