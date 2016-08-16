@@ -223,7 +223,11 @@ abstract class EventExtent extends Serializable with Logging {
         }
     }
 
-    limitCount(leaves.map(leaf => eval(Some(leaf), events.toSeq, 0)))
+    if (events.nonEmpty) {
+      limitCount(leaves.map(leaf => eval(Some(leaf), events.toSeq, 0)))
+    } else {
+      limitCount(Seq(0, Int.MaxValue))
+    }
   }
 
   /** Return the duration covered by this extent given a sorted set of events */
@@ -270,7 +274,11 @@ abstract class EventExtent extends Serializable with Logging {
         }
     }
 
-    limitDuration(leaves.map(leaf => eval(Some(leaf), events.toSeq, Duration(0))))
+    if (events.nonEmpty) {
+      limitDuration(leaves.map(leaf => eval(Some(leaf), events.toSeq, Duration(0))))
+    } else {
+      limitDuration(Seq(Duration(0), Duration(Long.MaxValue)))
+    }
   }
 
   override def toString: String = {
