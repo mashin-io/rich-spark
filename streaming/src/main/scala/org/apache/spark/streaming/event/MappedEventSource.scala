@@ -46,7 +46,7 @@ private[streaming] class MappedEventSource(
     prev.between(from, to).map(e => MappedEvent(this, cleanF(e)))
   }
 
-  override def toProduct: Product = (name, prev.toProduct)
+  override def toProduct: Product = (name, cleanF, prev.toProduct)
 
   override def toDetailedString: String = {
     s"${getClass.getSimpleName}(${prev.toDetailedString})"

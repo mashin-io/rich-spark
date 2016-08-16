@@ -46,7 +46,7 @@ private[streaming] class FilteredEventSource(
     prev.between(from, to).filter(filterFunc).map(e => FilteredEvent(this, e))
   }
 
-  override def toProduct: Product = (name, prev.toProduct)
+  override def toProduct: Product = (name, filterFunc, prev.toProduct)
 
   override def toDetailedString: String = {
     s"${getClass.getSimpleName}(${prev.toDetailedString})"
