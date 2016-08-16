@@ -24,6 +24,7 @@ import spark.utils.IOUtils
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
+import org.apache.spark.streaming.dstream.ConstantInputDStream
 import org.apache.spark.streaming.{Duration, StreamingContext, TestSuiteBase}
 
 class RESTEventSourceSuite extends TestSuiteBase {
@@ -47,26 +48,47 @@ class RESTEventSourceSuite extends TestSuiteBase {
       val restServer = ssc.restServer(host, port, "restServer")
         .get(pathCounterAdd).get(pathCounterSub)
 
-      ssc.textFileStream("/tmp")
-        .foreachRDD { (rdd: RDD[String], event: Event) =>
-          event match {
-            case RESTEvent(_, request: RESTRequest, _, _) =>
-              assert(request.queryMap.contains(amountParam),
-                s"Request missing $amountParam parameter")
+      val addJobTrigger = restServer.filter { case event: RESTEvent =>
+        event.request.pathInfo.equals(pathCounterAdd)
+      }
 
-              val amount = request.queryMap(amountParam)(0).toInt
-              if (request.pathInfo.equals(pathCounterAdd)) {
-                counter.addAndGet(amount)
-              } else if (request.pathInfo.equals(pathCounterSub)) {
-                counter.addAndGet(-amount)
-              }
+      val subJobTrigger = restServer.filter { case event: RESTEvent =>
+        event.request.pathInfo.equals(pathCounterSub)
+      }
 
-            case _ =>
-              fail(s"Did not expect event $event")
-          }
-          ()
+      val emptyStream = new ConstantInputDStream(ssc, ssc.sc.emptyRDD[String])
+
+      emptyStream.foreachRDD { (rdd: RDD[String], event: Event) =>
+        event match {
+          case FilteredEvent(_, RESTEvent(_, request: RESTRequest, _, _)) =>
+            assert(request.queryMap.contains(amountParam),
+              s"Request missing $amountParam parameter")
+
+            val amount = request.queryMap(amountParam)(0).toInt
+            counter.addAndGet(amount)
+
+          case _ =>
+            fail(s"Did not expect event $event")
         }
-        .bind(restServer)
+        ()
+      }
+      .bind(addJobTrigger)
+
+      emptyStream.foreachRDD { (rdd: RDD[String], event: Event) =>
+        event match {
+          case FilteredEvent(_, RESTEvent(_, request: RESTRequest, _, _)) =>
+            assert(request.queryMap.contains(amountParam),
+              s"Request missing $amountParam parameter")
+
+            val amount = request.queryMap(amountParam)(0).toInt
+            counter.addAndGet(-amount)
+
+          case _ =>
+            fail(s"Did not expect event $event")
+        }
+        ()
+      }
+      .bind(subJobTrigger)
 
       ssc.start()
 
