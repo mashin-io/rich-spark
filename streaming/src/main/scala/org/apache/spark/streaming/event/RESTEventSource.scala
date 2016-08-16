@@ -121,7 +121,7 @@ class RESTEventSource(
       val event = RESTEvent(RESTEventSource.this, request,
         indexCounter.getAndIncrement(), time)
       post(event)
-      logDebug(s"${this.toString} emitted event $event")
+      logDebug(s"${RESTEventSource.this.toString} emitted event $event")
       res
     }
   }
