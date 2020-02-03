@@ -1,6 +1,6 @@
 This package adds more to Apache Spark. Currently, there are two sub packages, **main** and **streaming**.
 
-##Rich Spark Main
+## Rich Spark Main
 
 The **main** sub package provides minor API extensions like:
 
@@ -30,7 +30,7 @@ val numPages = ...
 val rdd = sc.httpRDD(reqFactory, resHandler, numPages).cache
 ```
 
-##Rich Spark Streaming (AKA Reactive Spark)
+## Rich Spark Streaming (AKA Reactive Spark)
 
 The **streaming** package is an extension of the [Spark Streaming API](http://spark.apache.org/docs/2.0.0/streaming-programming-guide.html) to allow for built-in scheduling of Spark jobs (both batch and streaming jobs). Instead of deploying and configuring a scheduling service (e.g. Apache Oozie, Mesos Chronos, Linux Crons ...), this extension allows scheduling Spark jobs from within the job code making the scheduling semantics part of the job semantics.
 
@@ -61,7 +61,7 @@ ssc.start()
 ssc.awaitTermination()
 ```
 
-##Linking
+## Linking
 
 In order to setup Maven and your project POM file to use the package, add the following repository to the list of repositories:
 
